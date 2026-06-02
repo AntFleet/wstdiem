@@ -1,6 +1,21 @@
 # `wstdiem-loop-manager` Technical Specification
 
-Source anchors used: [liquid-protocol-v0](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0), [InferenceVault.sol](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/main/src/vault/InferenceVault.sol), [FeeRouter.sol](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/main/src/vault/FeeRouter.sol), [DeployAll.s.sol](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/main/script/vault/DeployAll.s.sol), [DeployMorphoMarket.s.sol](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/main/script/vault/DeployMorphoMarket.s.sol), [CurvePool.t.sol](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/main/test/vault/CurvePool.t.sol), [Morpho docs](https://docs.morpho.org/get-started/resources/contracts/morpho), [Morpho IRM docs](https://docs.morpho.org/get-started/resources/contracts/irm/).
+Source revision: `liquid-protocol-v0` main at [`85fb0705f93b41e40f88b39a374da720ec2458d9`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/commit/85fb0705f93b41e40f88b39a374da720ec2458d9).
+
+Source anchors used:
+
+- [`InferenceVault.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/src/vault/InferenceVault.sol)
+- [`FeeRouter.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/src/vault/FeeRouter.sol)
+- [`AgentTGERegistry.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/src/vault/AgentTGERegistry.sol)
+- [`SurplusStakingWrapper.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/src/vault/SurplusStakingWrapper.sol)
+- [`WstDIEMHook.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/src/vault/WstDIEMHook.sol)
+- [`DeployAll.s.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/script/vault/DeployAll.s.sol)
+- [`DeployCurvePool.s.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/script/vault/DeployCurvePool.s.sol)
+- [`DeployMorphoMarket.s.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/script/vault/DeployMorphoMarket.s.sol)
+- [`CurvePool.t.sol`](https://github.com/Liquid-Protocol-Ops/liquid-protocol-v0/blob/85fb0705f93b41e40f88b39a374da720ec2458d9/test/vault/CurvePool.t.sol)
+- [Morpho contract docs](https://docs.morpho.org/get-started/resources/contracts/morpho)
+- [Morpho IRM docs](https://docs.morpho.org/get-started/resources/contracts/irm/)
+- [Morpho address docs](https://docs.morpho.org/get-started/resources/addresses/)
 
 Important source-derived constraints:
 
@@ -61,7 +76,14 @@ interface AgentTGERegistryContract {
   isEligible(agent: Address): Promise<boolean>;
 }
 
-type AgentTier = "Bronze" | "Silver" | "Gold";
+type AgentTier = 0 | 1 | 2;
+type AgentTierName = "Bronze" | "Silver" | "Gold";
+
+const AGENT_TIER_TO_ABI: Record<AgentTierName, AgentTier> = {
+  Bronze: 0,
+  Silver: 1,
+  Gold: 2,
+};
 
 interface AgentCommitment {
   agent: Address;
@@ -138,6 +160,8 @@ interface MorphoBlueContract {
   idToMarketParams(id: Bytes32): Promise<MorphoMarketParams>;
   market(id: Bytes32): Promise<MorphoMarket>;
   position(id: Bytes32, user: Address): Promise<MorphoPosition>;
+  isAuthorized(authorizer: Address, authorized: Address): Promise<boolean>;
+  setAuthorization(authorized: Address, newIsAuthorized: boolean): ContractWrite<void>;
   supplyCollateral(params: MorphoMarketParams, assets: Uint256, onBehalf: Address, data: Hex): ContractWrite<void>;
   borrow(params: MorphoMarketParams, assets: Uint256, shares: Uint256, onBehalf: Address, receiver: Address): ContractWrite<[Uint256, Uint256]>;
   repay(params: MorphoMarketParams, assets: Uint256, shares: Uint256, onBehalf: Address, data: Hex): ContractWrite<[Uint256, Uint256]>;
@@ -162,6 +186,7 @@ interface Erc4626DepositEvent {
   assets: Uint256;
   shares: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
@@ -170,6 +195,7 @@ interface Erc20TransferEvent {
   to: Address;
   value: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
@@ -177,12 +203,14 @@ interface FeeRouterWETHHarvestedEvent {
   wethIn: Uint256;
   wstDIEMOut: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
 interface FeeRouterWstDIEMHarvestedEvent {
   amount: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
@@ -190,6 +218,7 @@ interface FeeRouterVVVHarvestedEvent {
   vvvIn: Uint256;
   diemCredited: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
@@ -199,6 +228,7 @@ interface SurplusStakedEvent {
   wstDIEMOut: Uint256;
   ref: Bytes32;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
@@ -207,6 +237,7 @@ interface SurplusUnstakedEvent {
   wstDIEMIn: Uint256;
   diemOut: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 
@@ -217,6 +248,7 @@ interface CurveTokenExchangeEvent {
   bought_id: bigint;
   tokens_bought: Uint256;
   blockNumber: bigint;
+  logIndex: number;
   transactionHash: Hex;
 }
 ```
@@ -238,6 +270,7 @@ interface CurveTokenExchangeEvent {
 | Morpho Blue | `idToMarketParams(marketId)` | startup + 1h | Validate market config |
 | Morpho Blue | `market(marketId)` | 30s | Utilization, borrow rate inputs |
 | Morpho Blue | `position(marketId, user)` | 30s | Collateral, borrow shares, HF |
+| Morpho Blue | `isAuthorized(owner, loopExecutor)` | startup + before tx simulation | Verify executor can borrow/withdraw on owner's behalf |
 | Morpho IRM | `borrowRateView(params, market)` | 30s | Borrow APY |
 | Morpho oracle | `price()` | 30s | NAV deviation |
 | Curve pool | `balances(0)`, `balances(1)`, `get_virtual_price()`, `totalSupply()` | 30s | Pool TVL/depth |
@@ -254,9 +287,10 @@ curvePoolTVL_DIEM = balances(0) + InferenceVault.convertToAssets(balances(1))
 lastCreditDIEM = latest inferred DIEM inflow from FeeRouter.VVVHarvested or DIEM Transfer(FeeRouter -> Vault)
 lastHarvestAt = latest block timestamp among WETHHarvested, WstDIEMHarvested, VVVHarvested
 curve24hVolume_DIEM = sum(TokenExchange volume normalized into DIEM value over trailing 24h)
-borrowedDIEM = position.borrowShares * market.totalBorrowAssets / market.totalBorrowShares
+borrowedDIEM = market.totalBorrowShares == 0 ? 0 : position.borrowShares * market.totalBorrowAssets / market.totalBorrowShares
 suppliedCollateralWstDIEM = position.collateral
 suppliedCollateralDIEM = InferenceVault.convertToAssets(position.collateral)
+positionNotionalDIEM = suppliedCollateralDIEM
 ```
 
 ## 2. Computed Metrics
@@ -275,11 +309,15 @@ averageVaultAssets_7d = time-weighted average totalAssets over trailing 7 days
 baseAPY = (rollingCreditDIEM_7d / averageVaultAssets_7d) * (365 / 7)
 ```
 
+If `averageVaultAssets_7d == 0`, display `baseAPY` as `0` and mark the APY window as insufficient.
+
 ```text
 utilization = market.totalBorrowAssets / market.totalSupplyAssets
 borrowRatePerSecond = irm.borrowRateView(marketParams, market)
 borrowRate = exp(borrowRatePerSecond * 31_536_000) - 1
 ```
+
+If `market.totalSupplyAssets == 0`, display utilization as `0` and mark the market as empty. Use the raw Morpho `market(marketId)` values for IRM input and only use accrued helper values for display when explicitly labeled.
 
 ```text
 netAPY(leverage) = leverage * baseAPY - (leverage - 1) * borrowRate
@@ -292,16 +330,19 @@ spreadScore = netAPY - 1.5 * riskFreeRate
 
 ```text
 collateralValueDIEM = convertToAssets(position.collateral)
-borrowedDIEM = position.borrowShares * market.totalBorrowAssets / market.totalBorrowShares
+borrowedDIEM = market.totalBorrowShares == 0 ? 0 : position.borrowShares * market.totalBorrowAssets / market.totalBorrowShares
 healthFactor = (collateralValueDIEM * liquidationLTV) / borrowedDIEM
 ```
 
 If `borrowedDIEM == 0`, `healthFactor = Infinity`.
 
 ```text
-positionSizeVsCurveDepth = (userBorrowedDIEM * leverage) / curvePoolTVL_DIEM
+positionNotionalDIEM = collateralValueDIEM
+positionSizeVsCurveDepth = positionNotionalDIEM / curvePoolTVL_DIEM
 positionSizeVsCurveDepthPercent = positionSizeVsCurveDepth * 100
 ```
+
+For projected opens, `projectedPositionNotionalDIEM = initialDIEM * targetLeverage`. If `curvePoolTVL_DIEM == 0`, block loop opens and display Curve depth as unavailable.
 
 Morpho oracle deviation:
 
@@ -343,9 +384,10 @@ Startup sequence:
 3. Verify required addresses are nonzero and contracts have code.
 4. Verify `vault.asset() == DIEM`.
 5. Verify Morpho `idToMarketParams(marketId)` matches DIEM loan token, wstDIEM collateral, configured oracle, configured IRM, and `lltv == 77e16` unless explicitly overridden.
-6. Backfill logs from `state.lastProcessedBlock + 1`.
-7. Load current position state and last persisted metrics.
-8. Print one startup summary table.
+6. If `loopExecutor` is configured, verify `morpho.isAuthorized(position.owner, loopExecutor) == true`; otherwise print the required authorization setup and mark loop tx commands unavailable.
+7. Backfill logs from `state.lastProcessedBlock + 1`.
+8. Load current position state and last persisted metrics.
+9. Print one startup summary table.
 
 Dashboard rows and columns:
 
@@ -491,8 +533,11 @@ oracleDeviation <= 0.01
 rpcChainId == 8453
 vault.asset() == DIEM
 market.lltv == 0.77e18
+morpho.isAuthorized(owner, loopExecutor) == true
 simulation succeeds before broadcast
 ```
+
+If Morpho authorization is missing, the CLI must not simulate or broadcast `open`, `rebalance`, or `exit`. It should print the exact `morpho.setAuthorization(loopExecutor, true)` transaction target/calldata for the owner to submit, or tell the operator to run `loop authorize-executor`.
 
 Flash-loan transaction construction:
 
@@ -552,7 +597,7 @@ Atomic open sequence:
 5. Executor calls `vault.deposit(initialDIEM + flashDiem, executor)` to mint wstDIEM.
 6. Executor approves wstDIEM to Morpho.
 7. Executor calls `morpho.supplyCollateral(marketParams, wstDIEMAmount, owner, data)`.
-8. Executor calls `morpho.borrow(marketParams, flashDiem + flashFee, 0, owner, executor)`.
+8. Executor calls `morpho.borrow(marketParams, flashDiem + flashFee, 0, owner, executor)`. This requires prior `owner -> LoopExecutor` Morpho authorization.
 9. Optional Curve step: only if configured route requires converting surplus DIEM into additional wstDIEM collateral; it must not consume DIEM needed to repay the flash loan.
 10. Executor repays flash principal plus fee.
 11. Executor refunds dust tokens to owner.
@@ -592,6 +637,7 @@ Behavior:
 - If current leverage < target, use add-collateral/open-style path.
 - If current leverage > target, partially unwind.
 - Same pre-flight, simulation, and confirmation requirements as `open`.
+- Require prior `owner -> LoopExecutor` Morpho authorization because rebalance can borrow or withdraw collateral on behalf of `owner`.
 - Target post-rebalance HF must be `>= 1.7`.
 
 Partial unwind formula:
@@ -601,13 +647,32 @@ targetDebt = collateralValueDIEM * liquidationLTV / targetHealthFactor
 repayAmount = max(0, currentDebt - targetDebt)
 ```
 
+### `loop authorize-executor`
+
+Inputs:
+
+| Param | Type |
+|---|---|
+| `--owner` | address, defaults wallet address |
+| `--dry-run` | boolean |
+| `--json` | boolean |
+
+Behavior:
+
+- Read `morpho.isAuthorized(owner, loopExecutor)`.
+- If already authorized, exit successfully without broadcasting and report `alreadyAuthorized: true`.
+- If not authorized, build `morpho.setAuthorization(loopExecutor, true)` from `owner`.
+- Simulate and estimate gas before prompting.
+- Require exact `y` or `yes` before broadcasting unless `--dry-run` is set.
+- Persist successful authorization tx in `tx_history` with command `loop authorize-executor`.
+
 ### `loop exit`
 
 Full atomic unwind sequence:
 
 1. Flash loan DIEM sufficient to repay Morpho debt.
 2. `morpho.repay(marketParams, repayAmount, 0, owner, data)`.
-3. `morpho.withdrawCollateral(marketParams, collateralAmount, owner, executor)`.
+3. `morpho.withdrawCollateral(marketParams, collateralAmount, owner, executor)`. This requires prior `owner -> LoopExecutor` Morpho authorization.
 4. Swap wstDIEM to DIEM through Curve `exchange(1, 0, dx, min_dy)`.
 5. Repay flash principal plus fee.
 6. Send remaining DIEM/wstDIEM dust to owner.
@@ -763,6 +828,7 @@ execution:
 | `status` | One-shot snapshot | `--config`, `--json`, `--owner` | Table or JSON |
 | `loop open` | Open leveraged position | `--target-leverage`, `--initial-diem`, `--slippage-bps`, `--dry-run`, `--json` | Simulation summary, confirmation, tx hash |
 | `loop rebalance` | Move to target leverage | `--target-leverage`, `--slippage-bps`, `--dry-run`, `--json` | Simulation summary, tx hash |
+| `loop authorize-executor` | Authorize executor on Morpho | `--owner`, `--dry-run`, `--json` | Authorization status, tx hash |
 | `loop exit` | Full unwind | `--slippage-bps`, `--force`, `--dry-run`, `--json` | Exit quote, warning, tx hash |
 | `loop simulate` | Dry-run only | `--action open|rebalance|exit`, action flags | JSON or table projection |
 | `loop history` | Read SQLite tx/position history | `--limit`, `--since`, `--json` | Table or JSON |
