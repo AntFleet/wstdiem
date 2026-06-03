@@ -140,6 +140,7 @@ export function makeEmptySnapshot(timestamp = Math.floor(Date.now() / 1000)): Me
     nav: nav.nav,
     navDisplay: formatWad(nav.nav),
     navSource: nav.source,
+    vaultTotalAssetsDiem: 0n,
     baseApy,
     borrowRate,
     utilization: 0,

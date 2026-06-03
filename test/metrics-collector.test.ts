@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config/defaults.js";
-import { collectVaultMetrics, type MetricsReadClient } from "../src/metrics/collector.js";
+import { YIELD_WINDOW_SECONDS, applyYieldWindowMetrics, collectVaultMetrics, type MetricsReadClient } from "../src/metrics/collector.js";
 import { makeEmptySnapshot, WAD } from "../src/metrics/math.js";
 import type { Address, AppConfig } from "../src/types/domain.js";
 
@@ -82,5 +82,54 @@ describe("metrics collector", () => {
     expect(result.snapshot.validity.vault).toBe(true);
     expect(result.snapshot.nav).toBe(2n * WAD);
     expect(result.readiness).toContain("vault convertToAssets(1e18) differs from totalAssets/totalSupply NAV");
+  });
+
+  it("computes base APY from full-window credit and time-weighted vault assets", () => {
+    const now = 1_000_000;
+    const snapshot = {
+      ...makeEmptySnapshot(now),
+      validity: {
+        ...makeEmptySnapshot().validity,
+        vault: true,
+        rpcFreshness: true,
+      },
+    };
+    const result = applyYieldWindowMetrics({
+      config: completeConfig(),
+      snapshot,
+      nowSeconds: now,
+      creditSamples: [
+        {
+          timestamp: now - 1_000,
+          amountDiem: 7n * WAD,
+        },
+      ],
+      vaultAssetSamples: [
+        {
+          timestamp: now - YIELD_WINDOW_SECONDS,
+          totalAssetsDiem: 100n * WAD,
+        },
+        {
+          timestamp: now,
+          totalAssetsDiem: 100n * WAD,
+        },
+      ],
+    });
+    expect(result.readiness).toEqual([]);
+    expect(result.snapshot.validity.yieldWindow).toBe(true);
+    expect(result.snapshot.baseApy).toBeCloseTo(3.65);
+  });
+
+  it("keeps yield-window metrics invalid without full asset history", () => {
+    const now = 1_000_000;
+    const result = applyYieldWindowMetrics({
+      config: completeConfig(),
+      snapshot: makeEmptySnapshot(now),
+      nowSeconds: now,
+      creditSamples: [{ timestamp: now - 1_000, amountDiem: 7n * WAD }],
+      vaultAssetSamples: [{ timestamp: now - 1_000, totalAssetsDiem: 100n * WAD }],
+    });
+    expect(result.snapshot.validity.yieldWindow).toBe(false);
+    expect(result.readiness.join(" ")).toContain("insufficient 7-day vault asset history");
   });
 });

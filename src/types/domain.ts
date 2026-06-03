@@ -111,6 +111,7 @@ export interface MetricSnapshot {
   nav: bigint;
   navDisplay: string;
   navSource: "empty" | "onchain";
+  vaultTotalAssetsDiem: bigint;
   baseApy: number;
   borrowRate: number;
   utilization: number;

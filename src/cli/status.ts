@@ -4,7 +4,7 @@ import { deliverConfiguredAlerts } from "../alerts/deliver.js";
 import { missingDeploymentKeys } from "../config/load.js";
 import { createViemLoopSimulationClient } from "../contracts/loopSimulationClient.js";
 import { readBestRpcBlockStatus } from "../contracts/rpc.js";
-import { collectVaultMetrics } from "../metrics/collector.js";
+import { YIELD_WINDOW_SECONDS, applyYieldWindowMetrics, collectVaultMetrics } from "../metrics/collector.js";
 import { makeEmptySnapshot } from "../metrics/math.js";
 import { Storage } from "../storage/sqlite.js";
 
@@ -53,9 +53,29 @@ export async function buildStatus(config: AppConfig): Promise<StatusResult> {
 }
 
 export async function runWatchOnce(config: AppConfig): Promise<StatusResult> {
-  const result = await buildStatus(config);
+  let result = await buildStatus(config);
   const storage = new Storage(config.storage.sqlitePath);
   try {
+    const windowStart = result.snapshot.timestamp - YIELD_WINDOW_SECONDS;
+    const vaultAssetSamples = storage.listVaultAssetSamplesForWindow(windowStart);
+    if (result.snapshot.validity.vault) {
+      vaultAssetSamples.push({
+        timestamp: result.snapshot.timestamp,
+        totalAssetsDiem: result.snapshot.vaultTotalAssetsDiem,
+      });
+    }
+    const yieldWindow = applyYieldWindowMetrics({
+      config,
+      snapshot: result.snapshot,
+      creditSamples: storage.listCreditSamplesSince(windowStart),
+      vaultAssetSamples,
+    });
+    result = {
+      ...result,
+      snapshot: yieldWindow.snapshot,
+      readiness: [...result.readiness, ...yieldWindow.readiness],
+      alerts: evaluateAlerts(yieldWindow.snapshot, config.thresholds),
+    };
     storage.insertMetricSnapshot(result.snapshot);
     for (const alert of result.alerts) {
       const positionAddress = config.position.owner ?? "unknown";

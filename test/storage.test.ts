@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Storage } from "../src/storage/sqlite.js";
-import { makeEmptySnapshot } from "../src/metrics/math.js";
+import { makeEmptySnapshot, WAD } from "../src/metrics/math.js";
 
 const created: string[] = [];
 
@@ -22,7 +22,8 @@ describe("SQLite persistence", () => {
     const storage = new Storage(file);
     storage.setMeta("lastProcessedBlock", "123");
     expect(storage.getMeta("lastProcessedBlock")).toBe("123");
-    storage.insertMetricSnapshot(makeEmptySnapshot());
+    storage.insertMetricSnapshot({ ...makeEmptySnapshot(10), vaultTotalAssetsDiem: 100n * WAD });
+    storage.insertMetricSnapshot({ ...makeEmptySnapshot(20), vaultTotalAssetsDiem: 110n * WAD });
     storage.insertAlert(
       {
         alertKey: "test",
@@ -45,6 +46,11 @@ describe("SQLite persistence", () => {
       source: "vvv",
       amountDiem: 1n,
     });
+    expect(storage.listCreditSamplesSince(0)).toEqual([{ timestamp: 1, amountDiem: 1n }]);
+    expect(storage.listVaultAssetSamplesForWindow(15)).toEqual([
+      { timestamp: 10, totalAssetsDiem: 100n * WAD },
+      { timestamp: 20, totalAssetsDiem: 110n * WAD },
+    ]);
     storage.insertHarvestEvent({
       txHash: "0xdef",
       logIndex: 0,

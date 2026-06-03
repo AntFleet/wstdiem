@@ -8,6 +8,16 @@ import type {
   StoredPositionSnapshot,
 } from "../types/domain.js";
 
+export interface StoredCreditSample {
+  timestamp: number;
+  amountDiem: bigint;
+}
+
+export interface StoredVaultAssetSample {
+  timestamp: number;
+  totalAssetsDiem: bigint;
+}
+
 export class Storage {
   private readonly db: Database.Database;
 
@@ -113,6 +123,14 @@ export class Storage {
         receipt_json TEXT
       );
     `);
+    this.ensureColumn("metric_snapshots", "vault_total_assets_diem", "TEXT NOT NULL DEFAULT '0'");
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((entry) => entry.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
   setMeta(key: string, value: string): void {
@@ -130,14 +148,15 @@ export class Storage {
     this.db
       .prepare(
         `INSERT INTO metric_snapshots (
-          timestamp, block_number, nav, base_apy, borrow_rate, net_apy_35,
+          timestamp, block_number, nav, vault_total_assets_diem, base_apy, borrow_rate, net_apy_35,
           spread_score, health_factor, curve_tvl_diem, oracle_deviation
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         snapshot.timestamp,
         Number(snapshot.blockNumber),
         snapshot.nav.toString(),
+        snapshot.vaultTotalAssetsDiem.toString(),
         snapshot.baseApy,
         snapshot.borrowRate,
         snapshot.netApy35,
@@ -146,6 +165,45 @@ export class Storage {
         snapshot.curveTvlDiem.toString(),
         snapshot.oracleDeviation,
       );
+  }
+
+  listCreditSamplesSince(timestamp: number): StoredCreditSample[] {
+    const rows = this.db
+      .prepare(
+        `SELECT timestamp, amount_diem
+         FROM credit_events
+         WHERE timestamp >= ?
+         ORDER BY timestamp ASC`,
+      )
+      .all(timestamp) as Array<{ timestamp: number; amount_diem: string }>;
+    return rows.map((row) => ({
+      timestamp: row.timestamp,
+      amountDiem: BigInt(row.amount_diem),
+    }));
+  }
+
+  listVaultAssetSamplesForWindow(windowStart: number): StoredVaultAssetSample[] {
+    const initial = this.db
+      .prepare(
+        `SELECT timestamp, vault_total_assets_diem
+         FROM metric_snapshots
+         WHERE timestamp <= ?
+         ORDER BY timestamp DESC
+         LIMIT 1`,
+      )
+      .get(windowStart) as { timestamp: number; vault_total_assets_diem: string } | undefined;
+    const rows = this.db
+      .prepare(
+        `SELECT timestamp, vault_total_assets_diem
+         FROM metric_snapshots
+         WHERE timestamp >= ?
+         ORDER BY timestamp ASC`,
+      )
+      .all(windowStart) as Array<{ timestamp: number; vault_total_assets_diem: string }>;
+    return [initial, ...rows].filter((row): row is { timestamp: number; vault_total_assets_diem: string } => row !== undefined).map((row) => ({
+      timestamp: row.timestamp,
+      totalAssetsDiem: BigInt(row.vault_total_assets_diem),
+    }));
   }
 
   insertAlert(alert: AlertEvaluation, timestamp: number, deliveredChannels: string[]): void {
