@@ -8,6 +8,20 @@ export const inferenceVaultAbi = [
   },
   {
     type: "function",
+    name: "totalAssets",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalSupply",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "convertToAssets",
     stateMutability: "view",
     inputs: [{ name: "shares", type: "uint256" }],

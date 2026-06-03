@@ -2,7 +2,9 @@ import type { AppConfig } from "../types/domain.js";
 import { evaluateAlerts } from "../alerts/evaluate.js";
 import { deliverConfiguredAlerts } from "../alerts/deliver.js";
 import { missingDeploymentKeys } from "../config/load.js";
+import { createViemLoopSimulationClient } from "../contracts/loopSimulationClient.js";
 import { readBestRpcBlockStatus } from "../contracts/rpc.js";
+import { collectVaultMetrics } from "../metrics/collector.js";
 import { makeEmptySnapshot } from "../metrics/math.js";
 import { Storage } from "../storage/sqlite.js";
 
@@ -22,7 +24,7 @@ export async function buildStatus(config: AppConfig): Promise<StatusResult> {
     readiness.push("missing BASE_RPC_URL/rpc.primaryUrl; on-chain status unavailable");
   }
 
-  const snapshot = makeEmptySnapshot();
+  let snapshot = makeEmptySnapshot();
   if (config.rpc.primaryUrl !== null || config.rpc.fallbackUrls.length > 0) {
     try {
       const blockStatus = await readBestRpcBlockStatus(config);
@@ -32,6 +34,14 @@ export async function buildStatus(config: AppConfig): Promise<StatusResult> {
       snapshot.blockNumber = blockStatus.blockNumber;
       snapshot.latestBlockAgeSeconds = Math.max(0, Math.floor(Date.now() / 1000) - blockStatus.blockTimestamp);
       snapshot.validity.rpcFreshness = blockStatus.chainId === config.chainId;
+      if (snapshot.validity.rpcFreshness && config.contracts.inferenceVault !== null) {
+        const client = await createViemLoopSimulationClient(config);
+        if (client !== null) {
+          const vaultMetrics = await collectVaultMetrics(config, client, snapshot);
+          snapshot = vaultMetrics.snapshot;
+          readiness.push(...vaultMetrics.readiness);
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       readiness.push(`RPC read failed: ${message}`);
