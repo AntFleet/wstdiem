@@ -1,0 +1,9 @@
+export const erc20TransferEventAbi = {
+  type: "event",
+  name: "Transfer",
+  inputs: [
+    { name: "from", type: "address", indexed: true },
+    { name: "to", type: "address", indexed: true },
+    { name: "value", type: "uint256", indexed: false },
+  ],
+} as const;

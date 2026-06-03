@@ -2,8 +2,10 @@ import type { AppConfig } from "../types/domain.js";
 import { evaluateAlerts } from "../alerts/evaluate.js";
 import { deliverConfiguredAlerts } from "../alerts/deliver.js";
 import { missingDeploymentKeys } from "../config/load.js";
+import { createViemBackfillClient } from "../contracts/backfillClient.js";
 import { createViemLoopSimulationClient } from "../contracts/loopSimulationClient.js";
 import { readBestRpcBlockStatus } from "../contracts/rpc.js";
+import { backfillCreditAndHarvestEvents } from "../metrics/backfill.js";
 import { YIELD_WINDOW_SECONDS, applyYieldWindowMetrics, collectVaultMetrics } from "../metrics/collector.js";
 import { makeEmptySnapshot } from "../metrics/math.js";
 import { Storage } from "../storage/sqlite.js";
@@ -56,6 +58,29 @@ export async function runWatchOnce(config: AppConfig): Promise<StatusResult> {
   let result = await buildStatus(config);
   const storage = new Storage(config.storage.sqlitePath);
   try {
+    if (result.snapshot.validity.rpcFreshness) {
+      try {
+        const backfillClient = await createViemBackfillClient(config);
+        if (backfillClient !== null) {
+          const backfill = await backfillCreditAndHarvestEvents({
+            config,
+            client: backfillClient,
+            storage,
+            finalizedBlock: result.snapshot.blockNumber,
+          });
+          result = {
+            ...result,
+            readiness: [...result.readiness, ...backfill.readiness],
+          };
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result = {
+          ...result,
+          readiness: [...result.readiness, `event backfill failed: ${message}`],
+        };
+      }
+    }
     const windowStart = result.snapshot.timestamp - YIELD_WINDOW_SECONDS;
     const vaultAssetSamples = storage.listVaultAssetSamplesForWindow(windowStart);
     if (result.snapshot.validity.vault) {
