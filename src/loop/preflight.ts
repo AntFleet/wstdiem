@@ -1,9 +1,10 @@
 import { curvePoolAbi } from "../abi/curvePool.js";
 import { inferenceVaultAbi } from "../abi/inferenceVault.js";
 import { morphoIrmAbi } from "../abi/morphoIrm.js";
+import { morphoOracleAbi } from "../abi/morphoOracle.js";
 import { morphoAbi } from "../abi/morpho.js";
 import { missingDeploymentKeys } from "../config/load.js";
-import { computeBorrowedDiem, computeBorrowRate, computeNetApy, WAD } from "../metrics/math.js";
+import { computeBorrowedDiem, computeBorrowRate, computeNetApy, computeOracleDeviation, WAD } from "../metrics/math.js";
 import type { Address, AppConfig, Hex, MorphoMarket } from "../types/domain.js";
 import type {
   BaseApyEvidence,
@@ -13,6 +14,7 @@ import type {
   LoopRebalanceParams,
   LoopSafetyEvidence,
   PreflightCheck,
+  RouteSlippageEvidence,
 } from "./types.js";
 
 interface ReadMorphoMarketParams {
@@ -181,6 +183,10 @@ function formatWadDecimal(value: bigint, precision = 4): string {
   return `${whole}.${fraction}`;
 }
 
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(2)}%`;
+}
+
 async function checkMorphoMarketParams(config: AppConfig, client: LoopPreflightClient): Promise<PreflightCheck> {
   if (config.morpho.marketId === null || config.contracts.inferenceVault === null || config.contracts.morphoOracle === null) {
     return check(
@@ -321,6 +327,53 @@ function validateBaseApyEvidence(config: AppConfig, evidence: BaseApyEvidence | 
   }
   if (!Number.isFinite(evidence.baseApy) || evidence.baseApy < 0) {
     return "base APY evidence must include a finite non-negative baseApy";
+  }
+  return null;
+}
+
+function validateRouteSlippageEvidence(
+  config: AppConfig,
+  context: LoopPreflightContext,
+  evidence: RouteSlippageEvidence | undefined,
+): string | null {
+  if (evidence === undefined) {
+    return "route quote and slippage evidence is required for live loop validation";
+  }
+  if (!evidence.valid) {
+    return "route slippage evidence is marked invalid";
+  }
+  if (evidence.action !== context.action) {
+    return `route slippage evidence action ${evidence.action} does not match ${context.action}`;
+  }
+  if (evidence.chainId !== config.chainId) {
+    return `route slippage evidence chainId ${evidence.chainId} does not match config chainId ${config.chainId}`;
+  }
+  if (evidence.blockNumber < 0n) {
+    return "route slippage evidence blockNumber must be non-negative";
+  }
+  if (!Number.isInteger(evidence.maxSlippageBps) || evidence.maxSlippageBps < 0) {
+    return "route slippage evidence must include a non-negative integer maxSlippageBps";
+  }
+  if (!Number.isFinite(evidence.priceImpactBps) || evidence.priceImpactBps < 0) {
+    return "route slippage evidence must include a finite non-negative priceImpactBps";
+  }
+  if (evidence.maxSlippageBps > config.execution.maxSlippageBps) {
+    return `route max slippage ${evidence.maxSlippageBps} bps exceeds configured max ${config.execution.maxSlippageBps} bps`;
+  }
+  if (evidence.priceImpactBps > config.execution.maxCurvePriceImpactBps) {
+    return `route price impact ${evidence.priceImpactBps.toFixed(2)} bps exceeds configured max ${config.execution.maxCurvePriceImpactBps} bps`;
+  }
+  if (context.params !== null && context.action === "rebalance") {
+    const params = context.params as LoopRebalanceParams;
+    if (evidence.maxSlippageBps > Number(params.maxSlippageBps)) {
+      return `route max slippage ${evidence.maxSlippageBps} bps exceeds executor param ${params.maxSlippageBps.toString()} bps`;
+    }
+  }
+  if (context.params !== null && context.action === "open") {
+    const params = context.params as LoopOpenParams;
+    if (evidence.priceImpactBps > Number(params.maxCurvePriceImpactBps)) {
+      return `route price impact ${evidence.priceImpactBps.toFixed(2)} bps exceeds executor param ${params.maxCurvePriceImpactBps.toString()} bps`;
+    }
   }
   return null;
 }
@@ -483,6 +536,54 @@ async function checkCurveDepth(input: {
   );
 }
 
+async function checkOracleDeviation(input: {
+  config: AppConfig;
+  client: LoopPreflightClient;
+}): Promise<PreflightCheck> {
+  if (input.config.contracts.morphoOracle === null || input.config.contracts.inferenceVault === null) {
+    return check("oracle-deviation", "fail", "morphoOracle and inferenceVault are required for oracle deviation validation");
+  }
+  const onchainOraclePrice = (await input.client.readContract({
+    address: input.config.contracts.morphoOracle,
+    abi: morphoOracleAbi,
+    functionName: "price",
+  })) as bigint;
+  const oneWstDiemAssets = (await input.client.readContract({
+    address: input.config.contracts.inferenceVault,
+    abi: inferenceVaultAbi,
+    functionName: "convertToAssets",
+    args: [WAD],
+  })) as bigint;
+  if (oneWstDiemAssets === 0n) {
+    return check("oracle-deviation", "fail", "InferenceVault.convertToAssets(1e18) returned zero");
+  }
+  const deviation = computeOracleDeviation(onchainOraclePrice, oneWstDiemAssets);
+  const maximum = input.config.thresholds.oracleDeviationCritical;
+  return check(
+    "oracle-deviation",
+    deviation <= maximum ? "pass" : "fail",
+    deviation <= maximum
+      ? `Morpho oracle deviation ${formatPercent(deviation)} <= ${formatPercent(maximum)}`
+      : `Morpho oracle deviation ${formatPercent(deviation)} exceeds ${formatPercent(maximum)}`,
+  );
+}
+
+function checkRouteSlippage(config: AppConfig, context?: LoopPreflightContext): PreflightCheck {
+  if (context === undefined || context.params === null) {
+    return check("route-slippage", "fail", "exact LoopExecutor params are required for route slippage validation");
+  }
+  const evidence = context.safetyEvidence?.routeSlippage;
+  const evidenceError = validateRouteSlippageEvidence(config, context, evidence);
+  if (evidenceError !== null || evidence === undefined) {
+    return check("route-slippage", "fail", evidenceError ?? "route quote and slippage evidence is required");
+  }
+  return check(
+    "route-slippage",
+    "pass",
+    `route price impact ${evidence.priceImpactBps.toFixed(2)} bps within ${config.execution.maxCurvePriceImpactBps} bps cap`,
+  );
+}
+
 export async function runLoopPreflight(
   config: AppConfig,
   owner: Address | null,
@@ -568,14 +669,8 @@ export async function runLoopPreflight(
   checks.push(checkProjectedHealthFactor(config, context));
   checks.push(await checkCurveDepth({ config, owner, client, context }));
   checks.push(await checkNetApy({ config, client, context }));
-
-  const unavailableStrategyGates = [
-    ["oracle-deviation", "Morpho oracle deviation check is not implemented"],
-    ["route-slippage", "route quote and slippage protection check is not implemented"],
-  ] as const;
-  for (const [key, message] of unavailableStrategyGates) {
-    checks.push(check(key, "fail", message));
-  }
+  checks.push(await checkOracleDeviation({ config, client }));
+  checks.push(checkRouteSlippage(config, context));
 
   return checks;
 }

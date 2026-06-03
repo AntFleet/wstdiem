@@ -28,6 +28,21 @@ function safetyEvidence(baseApy = 0.2): LoopSafetyEvidence {
   };
 }
 
+function safetyEvidenceWithRoute(baseApy = 0.2, priceImpactBps = 25): LoopSafetyEvidence {
+  return {
+    ...safetyEvidence(baseApy),
+    routeSlippage: {
+      source: "test",
+      action: "rebalance",
+      chainId: 8453,
+      blockNumber: 1n,
+      maxSlippageBps: 25,
+      priceImpactBps,
+      valid: true,
+    },
+  };
+}
+
 function completeConfig(): AppConfig {
   return {
     ...DEFAULT_CONFIG,
@@ -65,6 +80,7 @@ class MockPreflightClient implements LoopPreflightClient {
       positionBorrowShares?: bigint;
       marketTotalBorrowAssets?: bigint;
       marketTotalBorrowShares?: bigint;
+      morphoOraclePrice?: bigint;
       curveDiemBalance?: bigint;
       curveWstDiemBalance?: bigint;
       navWad?: bigint;
@@ -111,6 +127,9 @@ class MockPreflightClient implements LoopPreflightClient {
     }
     if (args.functionName === "borrowRateView") {
       return this.options.borrowRatePerSecond ?? 0n;
+    }
+    if (args.functionName === "price") {
+      return this.options.morphoOraclePrice ?? WAD * WAD;
     }
     if (args.functionName === "idToMarketParams") {
       return (
@@ -255,7 +274,8 @@ describe("loop preflight and simulation", () => {
     });
     expect(result.status).toBe("blocked");
     expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("net-apy:pass");
-    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("oracle-deviation:fail");
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("oracle-deviation:pass");
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("route-slippage:fail");
   });
 
   it("fails net APY when target leverage carry is compressed", async () => {
@@ -273,6 +293,41 @@ describe("loop preflight and simulation", () => {
     const netApy = result.preflightChecks.find((check) => check.key === "net-apy");
     expect(netApy?.status).toBe("fail");
     expect(netApy?.message).toContain("required 8.00%");
+  });
+
+  it("passes live rebalance simulation when every implemented safety gate has evidence", async () => {
+    const config = completeConfig();
+    const params = buildLoopRebalanceParams({ config, owner, targetLeverage: 1.7, slippageBps: 25, nowSeconds: 1 });
+    const result = await simulateLoopExecutorCall({
+      config,
+      action: "rebalance",
+      owner,
+      from: owner,
+      params,
+      safetyEvidence: safetyEvidenceWithRoute(0.2, 25),
+      client: new MockSimulationClient({ gas: 999n, borrowRatePerSecond: 0n }),
+    });
+    expect(result.status).toBe("passed");
+    expect(result.gasEstimate).toBe("999");
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("route-slippage:pass");
+  });
+
+  it("fails route slippage when quote evidence exceeds configured price impact cap", async () => {
+    const config = completeConfig();
+    const params = buildLoopRebalanceParams({ config, owner, targetLeverage: 1.7, slippageBps: 25, nowSeconds: 1 });
+    const result = await simulateLoopExecutorCall({
+      config,
+      action: "rebalance",
+      owner,
+      from: owner,
+      params,
+      safetyEvidence: safetyEvidenceWithRoute(0.2, 101),
+      client: new MockSimulationClient({ borrowRatePerSecond: 0n }),
+    });
+    const routeSlippage = result.preflightChecks.find((check) => check.key === "route-slippage");
+    expect(result.status).toBe("blocked");
+    expect(routeSlippage?.status).toBe("fail");
+    expect(routeSlippage?.message).toContain("exceeds configured max 100 bps");
   });
 
   it("fails Curve depth when projected position exceeds 20 percent of pool TVL", async () => {
@@ -358,6 +413,25 @@ describe("loop preflight and simulation", () => {
     const curveDepth = result.preflightChecks.find((check) => check.key === "curve-depth");
     expect(curveDepth?.status).toBe("fail");
     expect(curveDepth?.message).toContain("TVL is zero");
+  });
+
+  it("fails oracle deviation when Morpho oracle price diverges from vault NAV", async () => {
+    const config = completeConfig();
+    const params = buildLoopRebalanceParams({ config, owner, targetLeverage: 1.7, slippageBps: 25, nowSeconds: 1 });
+    const result = await simulateLoopExecutorCall({
+      config,
+      action: "rebalance",
+      owner,
+      from: owner,
+      params,
+      safetyEvidence: safetyEvidence(),
+      client: new MockSimulationClient({
+        morphoOraclePrice: (WAD * WAD * 102n) / 100n,
+      }),
+    });
+    const oracleDeviation = result.preflightChecks.find((check) => check.key === "oracle-deviation");
+    expect(oracleDeviation?.status).toBe("fail");
+    expect(oracleDeviation?.message).toContain("exceeds 1.00%");
   });
 
   it("blocks live simulation without a transaction sender", async () => {

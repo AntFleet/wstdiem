@@ -62,8 +62,19 @@ export interface SignerEvidence {
   verified: boolean;
 }
 
+export interface RouteSlippageEvidence {
+  source: "route-quote" | "test";
+  action: LoopAction;
+  chainId: number;
+  blockNumber: bigint;
+  maxSlippageBps: number;
+  priceImpactBps: number;
+  valid: boolean;
+}
+
 export interface LoopSafetyEvidence {
   baseApy?: BaseApyEvidence;
+  routeSlippage?: RouteSlippageEvidence;
   signer?: SignerEvidence;
 }
 
