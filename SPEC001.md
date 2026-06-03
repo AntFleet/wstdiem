@@ -543,6 +543,14 @@ Flash-loan transaction construction:
 
 The CLI must not try to assemble this as multiple EOA transactions. It must call a deployed `LoopExecutor` contract that owns the flash-loan callback and enforces atomicity.
 
+Current product slice flash-fee boundary:
+
+- `LoopExitParams` intentionally matches the current executor ABI and does not include a separate flash-fee field.
+- The committed CLI/config schema does not select a flash-loan provider and does not define a provider fee formula. `automation.provider` is for Gelato/Chainlink monitoring automation only and must not be interpreted as flash-loan provider selection.
+- Off-chain exit planning can currently prove only that protected Curve output covers computed Morpho repay: `minDiemOut >= repayAmountDiem`.
+- Fee-inclusive repayment proof, `minDiemOut >= repayAmountDiem + flashFee`, is blocked until the flash-loan provider/fee model or executor source is specified.
+- Live `simulateContract`/`eth_call` is mandatory for exit because executor-internal flash-fee handling is the only current validation surface.
+
 Required executor interface:
 
 ```ts
@@ -613,7 +621,8 @@ Dry-run:
 
 - Run `simulateContract`/`eth_call` for `open`.
 - Run `estimateGas`.
-- Print projected leverage, HF, borrow rate, net APY, Curve price impact, flash fee, gas estimate, and max loss from slippage.
+- Print projected leverage, HF, borrow rate, net APY, Curve price impact, gas estimate, and max loss from slippage.
+- Print flash fee only after the selected provider/fee model or executor simulation result exposes that value; until then, report flash fee as unresolved and rely on live simulation for repayment validation.
 - Never broadcast if simulation reverts.
 
 Confirmation prompt:
@@ -670,13 +679,57 @@ Behavior:
 
 Full atomic unwind sequence:
 
-1. Flash loan DIEM sufficient to repay Morpho debt.
+1. Flash loan DIEM sufficient to repay Morpho debt; fee sizing is executor/provider-defined until a provider fee model is specified.
 2. `morpho.repay(marketParams, repayAmount, 0, owner, data)`.
 3. `morpho.withdrawCollateral(marketParams, collateralAmount, owner, executor)`. This requires prior `owner -> LoopExecutor` Morpho authorization.
 4. Swap wstDIEM to DIEM through Curve `exchange(1, 0, dx, min_dy)`.
 5. Repay flash principal plus fee.
 6. Send remaining DIEM/wstDIEM dust to owner.
 7. Persist tx history.
+
+Current product slice behavior:
+
+- `loop simulate --action exit --live` builds exact exit params from live Morpho position state and a live Curve quote.
+- The CLI computes `repayAmountDiem` from Morpho market totals and the owner's `borrowShares`.
+- The CLI sets `maxWstDiemToSell` to the owner's current wstDIEM collateral and `minDiemOut` to the protected Curve quote after configured slippage.
+- The implemented off-chain guard rejects an exit plan when `minDiemOut < repayAmountDiem`.
+- The current ABI/config do not expose `flashFee`, a flash provider, or a provider-specific fee formula, so the CLI cannot currently prove `minDiemOut >= repayAmountDiem + flashFee`.
+- Non-live `loop exit` projection remains blocked from producing unprotected calldata; live simulation remains required before any future broadcast path.
+
+Acceptance criteria for the current product slice:
+
+- `LoopExitParams` stays aligned with the committed ABI: `owner`, `marketParams`, `repayAmountDiem`, `maxWstDiemToSell`, `minDiemOut`, `force`, and `deadline`.
+- Live exit planning reads Morpho debt/collateral state, quotes the Curve exit route, and blocks when protected Curve output cannot cover computed Morpho repay.
+- Live exit simulation calls `simulateContract`/`eth_call` with the exact executor params and reports blocked/failed/passed status before any broadcast path can exist.
+- Tests may assert `minDiemOut >= repayAmountDiem`; they must not require fee-inclusive proof until a fee input/model exists.
+
+Executor/provider amendment required before fee-inclusive off-chain proof:
+
+- Provider selection:
+  - The spec must add a dedicated flash-loan provider configuration surface separate from `automation.provider`.
+  - The selected provider must be named explicitly, with Base deployment address, token support for DIEM, callback entrypoint/signature, callback initiator/origin semantics, and the executor storage/config field that pins the provider address.
+  - The selected provider must be the only callback sender accepted for exit flash-loan repayment. If no provider is configured, the executor must revert and the CLI must report flash-fee proof as unavailable.
+- Fee derivation:
+  - The spec must define exactly how `flashFee` is derived for the selected provider: on-chain quote/read method, provider-supplied callback amount, deterministic bps formula, rounding direction, and token decimals.
+  - Once the provider is chosen, the implementation spec must decide whether `flashFee` is a CLI/config input, an executor-read internal value, or simulation-only output. The decision must identify the canonical source of truth and reject conflicting values.
+  - Off-chain planning may prove `minDiemOut >= repayAmountDiem + flashFee` only when the fee value is read or computed from that provider-specific rule at the same block as the Curve route quote and Morpho debt read.
+  - Rounding must be conservative: any division or provider bps formula must round the required repayment up, never down.
+- Executor callback validation:
+  - The executor must validate callback sender, loan token, loan amount, fee amount, callback initiator, encoded owner/action context, deadline, non-reentrancy, and Morpho owner authorization before continuing the exit path.
+  - The executor must repay flash principal plus fee atomically, refund remaining DIEM/wstDIEM dust to the owner, and revert if Curve output cannot cover `repayAmountDiem + flashFee`.
+  - The executor must emit an exit event or expose a simulation-readable result that includes `repayAmountDiem`, `flashFee`, total flash repayment, wstDIEM sold, DIEM received, and dust refunded.
+- Simulation evidence:
+  - `loop simulate --action exit --live` must include provider identity, provider fee source, fee block number, Morpho debt block number, Curve quote block number, exact executor calldata, `simulateContract`/`eth_call` status, and gas estimate.
+  - Simulation must fail closed when provider config is missing, callback validation cannot be proven by the executor source/ABI, fee evidence is stale relative to the route/debt reads, or `minDiemOut < repayAmountDiem + flashFee`.
+  - A passed simulation is required before broadcast and is evidence of executor-internal callback validation; it is not a substitute for the off-chain fee inequality when the fee model is available.
+- CLI output:
+  - JSON output must expose `repayAmountDiem`, `flashFee`, `flashFeeSource`, `flashLoanProvider`, `totalFlashRepaymentDiem`, `minDiemOut`, `feeInclusiveRepayCovered`, route quote evidence, live simulation status, and gas estimate.
+  - Table output must show the same safety decision in operator-readable form and must print `flashFee: unresolved` until provider-specific fee derivation is configured.
+  - The CLI must never print a concrete flash-fee amount inferred from an unspecified provider or from `automation.provider`.
+- Fork tests:
+  - Provider-specific fork tests must run against Base fork state with the selected provider address and must cover callback-sender rejection, wrong-token rejection, stale/deadline rejection, insufficient `minDiemOut` including fee, successful fee-inclusive repayment, owner dust refund, and no retained executor balances.
+  - Fork tests must assert the off-chain plan's `flashFee` equals the provider/executor fee observed during callback and that `minDiemOut >= repayAmountDiem + flashFee` gates calldata generation.
+  - Until the provider is selected and the executor source or verified ABI exposes fee/callback behavior, fork tests must assert that fee-inclusive proof remains blocked rather than assuming a provider.
 
 Slippage protection:
 
@@ -937,7 +990,7 @@ forge test --fork-url $BASE_RPC_URL --match-path test/wstdiem-loop-manager/*.t.s
 ## Open Questions
 
 1. Actual Base mainnet addresses for `InferenceVault`, `FeeRouter`, `Curve DIEM/wstDIEM pool`, `Morpho oracle`, `marketId`, and executor contracts are not committed in the current top-level `broadcast/` tree.
-2. Flash-loan provider must be selected: Balancer, Morpho flash liquidity, Uniswap, or another Base provider.
+2. Flash-loan provider and fee model must be selected: Balancer, Morpho flash liquidity, Uniswap, or another Base provider. Once selected, decide whether flash fee is a CLI/config input, executor-read internal value, or simulation-only output. Until this is specified, fee-inclusive off-chain proof for `minDiemOut >= repayAmountDiem + flashFee` remains blocked.
 3. The requested open sequence includes `curve.swap`; the source vault already mints wstDIEM through `vault.deposit`. Protocol team must decide whether open should use direct deposit, Curve acquisition of wstDIEM, or a hybrid route.
 4. The loop executor and auto-deleverager contracts do not exist in the repo and require a separate Solidity spec/audit before mainnet use.
 5. The Curve pool `TokenExchange` event signature must be verified against the exact deployed StableSwap NG implementation ABI before coding log decoding.
