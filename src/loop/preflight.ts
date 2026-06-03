@@ -25,7 +25,7 @@ interface ReadMorphoMarketParams {
   lltv: bigint;
 }
 
-interface ReadMorphoPosition {
+export interface ReadMorphoPosition {
   borrowShares: bigint;
   collateral: bigint;
 }
@@ -115,7 +115,7 @@ function parseMorphoMarketParams(value: unknown): ReadMorphoMarketParams | null 
   return null;
 }
 
-function parseMorphoPosition(value: unknown): ReadMorphoPosition | null {
+export function parseMorphoPosition(value: unknown): ReadMorphoPosition | null {
   if (Array.isArray(value) && value.length >= 3) {
     return {
       borrowShares: BigInt(value[1] as bigint | number | string),
@@ -134,7 +134,7 @@ function parseMorphoPosition(value: unknown): ReadMorphoPosition | null {
   return null;
 }
 
-function parseMorphoMarket(value: unknown): MorphoMarket | null {
+export function parseMorphoMarket(value: unknown): MorphoMarket | null {
   if (Array.isArray(value) && value.length >= 6) {
     return {
       totalSupplyAssets: BigInt(value[0] as bigint | number | string),

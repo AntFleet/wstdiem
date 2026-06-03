@@ -20,6 +20,9 @@ export async function createViemLoopSimulationClient(config: AppConfig): Promise
     async getCode(address: Address): Promise<Hex> {
       return (await client.getCode({ address })) ?? "0x";
     },
+    async getBlockNumber(): Promise<bigint> {
+      return client.getBlockNumber();
+    },
     async readContract(args): Promise<unknown> {
       return client.readContract(args as never);
     },

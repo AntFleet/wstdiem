@@ -7,6 +7,7 @@ import { makeEmptySnapshot } from "../metrics/math.js";
 import { Storage } from "../storage/sqlite.js";
 import { createViemLoopSimulationClient } from "../contracts/loopSimulationClient.js";
 import { simulateMorphoAuthorization } from "../loop/authorization.js";
+import { buildLiveLoopExitPlan } from "../loop/exitPlan.js";
 import { buildConfiguredLoopSafetyEvidence } from "../loop/safetyEvidence.js";
 import { simulateLoopExecutorCall } from "../loop/simulator.js";
 import type { AppConfig, Severity } from "../types/domain.js";
@@ -216,7 +217,11 @@ loop
       if (!opts.live) {
         return projection;
       }
-      const { owner, from, params } = buildLoopExecutorParamsForCommand(config, commandOptions);
+      const builtParams = buildLoopExecutorParamsForCommand(config, commandOptions);
+      const { owner, from } = builtParams;
+      let params = builtParams.params;
+      let safetyEvidence = buildConfiguredLoopSafetyEvidence(config);
+      let exitPlan: Awaited<ReturnType<typeof buildLiveLoopExitPlan>> | undefined;
       let client: Awaited<ReturnType<typeof createViemLoopSimulationClient>>;
       try {
         client = await createViemLoopSimulationClient(config);
@@ -236,17 +241,37 @@ loop
         };
         throw new CliError("LIVE_SIMULATION_BLOCKED", errorMessage(error), undefined, data);
       }
+      if (opts.action === "exit" && client !== null) {
+        exitPlan = await buildLiveLoopExitPlan({
+          config,
+          owner,
+          preflightClient: client,
+          routeQuoteClient: client,
+          slippageBps: commandOptions.slippageBps ?? config.execution.defaultSlippageBps,
+          nowSeconds,
+        });
+        params = exitPlan.params;
+        if (exitPlan.routeSlippage !== undefined) {
+          safetyEvidence = {
+            ...safetyEvidence,
+            routeSlippage: exitPlan.routeSlippage,
+          };
+        }
+      }
       const liveSimulation = await simulateLoopExecutorCall({
         config,
         action: opts.action,
         owner,
         from,
         params,
-        safetyEvidence: buildConfiguredLoopSafetyEvidence(config),
+        safetyEvidence,
         client: client ?? undefined,
       });
       const data = {
         ...projection,
+        executorParamsAvailable: params !== null,
+        liveRouteQuote: exitPlan?.routeQuote,
+        liveRouteQuoteReadiness: exitPlan?.readiness,
         kind:
           liveSimulation.status === "passed"
             ? ("live_passed" as const)

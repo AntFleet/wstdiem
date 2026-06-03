@@ -5,6 +5,7 @@ import { hasPreflightFailures, runLoopPreflight, type LoopPreflightClient } from
 import type { LoopAction, LoopExecutorParams, LoopSafetyEvidence, LoopSimulationResult } from "./types.js";
 
 export interface LoopSimulationClient extends LoopPreflightClient {
+  getBlockNumber(): Promise<bigint>;
   simulateContract(args: {
     address: Address;
     abi: unknown;

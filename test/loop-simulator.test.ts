@@ -161,6 +161,10 @@ class MockSimulationClient extends MockPreflightClient implements LoopSimulation
   private readonly simulateError: Error | undefined;
   private readonly gas: bigint;
 
+  async getBlockNumber(): Promise<bigint> {
+    return 1n;
+  }
+
   async simulateContract(): Promise<unknown> {
     if (this.simulateError !== undefined) {
       throw this.simulateError;
@@ -527,6 +531,9 @@ describe("loop preflight and simulation", () => {
         },
         async getCode() {
           return "0x01" as Hex;
+        },
+        async getBlockNumber() {
+          return 1n;
         },
         async readContract() {
           return true;
