@@ -7,17 +7,25 @@ import type { AppConfig, Address } from "../src/types/domain.js";
 class MockRouteQuoteClient implements RouteQuoteClient {
   constructor(
     private readonly options: {
+      chainId?: number;
       blockNumber?: bigint;
       expectedDiemOutAtNav?: bigint;
       quotedDiemOut?: bigint;
     } = {},
   ) {}
 
+  readonly readBlocks: Array<bigint | undefined> = [];
+
+  async getChainId(): Promise<number> {
+    return this.options.chainId ?? 8453;
+  }
+
   async getBlockNumber(): Promise<bigint> {
     return this.options.blockNumber ?? 123n;
   }
 
-  async readContract(args: { functionName: string }): Promise<unknown> {
+  async readContract(args: { functionName: string; blockNumber?: bigint }): Promise<unknown> {
+    this.readBlocks.push(args.blockNumber);
     if (args.functionName === "convertToAssets") {
       return this.options.expectedDiemOutAtNav ?? 100n * WAD;
     }
@@ -41,9 +49,10 @@ function completeConfig(): AppConfig {
 
 describe("Curve route quote evidence", () => {
   it("quotes exit swaps with protected min-out and price-impact evidence", async () => {
+    const client = new MockRouteQuoteClient();
     const result = await quoteCurveExitRoute({
       config: completeConfig(),
-      client: new MockRouteQuoteClient(),
+      client,
       wstDiemIn: 100n * WAD,
       slippageBps: 50,
     });
@@ -72,6 +81,20 @@ describe("Curve route quote evidence", () => {
       protectedMinOut: (99n * WAD * 9_950n) / 10_000n,
       valid: true,
     });
+    expect(client.readBlocks).toEqual([123n, 123n]);
+  });
+
+  it("does not emit evidence when the quote client is on the wrong chain", async () => {
+    const result = await quoteCurveExitRoute({
+      config: completeConfig(),
+      client: new MockRouteQuoteClient({ chainId: 1 }),
+      wstDiemIn: 100n * WAD,
+      slippageBps: 50,
+    });
+
+    expect(result.quote).toBeUndefined();
+    expect(result.evidence).toBeUndefined();
+    expect(result.readiness).toEqual(["unexpected route quote chainId 1; expected 8453"]);
   });
 
   it("marks evidence invalid when Curve impact exceeds the configured cap", async () => {

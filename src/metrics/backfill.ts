@@ -1,9 +1,17 @@
-import { decodeEventLog } from "viem";
+import { decodeEventLog, toEventHash } from "viem";
 import { erc20TransferEventAbi } from "../abi/erc20.js";
 import { feeRouterHarvestEventAbis } from "../abi/feeRouter.js";
 import type { Address, AppConfig, Hex, StoredCreditEvent, StoredHarvestEvent } from "../types/domain.js";
 
 export const REORG_SAFETY_OVERLAP_BLOCKS = 20n;
+export const INITIAL_BACKFILL_LOOKBACK_BLOCKS = 302_400n;
+
+const TRANSFER_TOPIC = toEventHash("Transfer(address,address,uint256)");
+const HARVEST_TOPICS = new Set<Hex>([
+  toEventHash("WETHHarvested(uint256,uint256)"),
+  toEventHash("WstDIEMHarvested(uint256)"),
+  toEventHash("VVVHarvested(uint256,uint256)"),
+]);
 
 export interface BackfillLog {
   address: Address;
@@ -64,6 +72,9 @@ function decodeTransferCredit(config: AppConfig, log: BackfillLog): { amountDiem
   if (config.contracts.feeRouter === null || config.contracts.inferenceVault === null) {
     return null;
   }
+  if (log.topics[0] !== TRANSFER_TOPIC) {
+    return null;
+  }
   const decoded = decodeEventLog({
     abi: [erc20TransferEventAbi],
     data: log.data,
@@ -91,6 +102,9 @@ function decodeHarvest(log: BackfillLog): {
   amountOut?: bigint;
   creditDiem?: bigint;
 } | null {
+  if (log.topics[0] === undefined || !HARVEST_TOPICS.has(log.topics[0])) {
+    return null;
+  }
   const decoded = decodeEventLog({
     abi: feeRouterHarvestEventAbis,
     data: log.data,
@@ -157,15 +171,28 @@ export async function backfillCreditAndHarvestEvents(input: {
   const cursor =
     input.fromBlock ??
     (lastProcessedBlock === null
-      ? input.finalizedBlock
+      ? input.finalizedBlock > INITIAL_BACKFILL_LOOKBACK_BLOCKS
+        ? input.finalizedBlock - INITIAL_BACKFILL_LOOKBACK_BLOCKS
+        : 0n
       : lastProcessedBlock > REORG_SAFETY_OVERLAP_BLOCKS
         ? lastProcessedBlock - REORG_SAFETY_OVERLAP_BLOCKS
         : 0n);
   const fromBlock = cursor > input.finalizedBlock ? input.finalizedBlock : cursor;
   const toBlock = input.finalizedBlock;
+  if (lastProcessed !== null && lastProcessedBlock === null && input.fromBlock === undefined) {
+    return {
+      fromBlock: 0n,
+      toBlock,
+      creditEvents: 0,
+      harvestEvents: 0,
+      readiness: [`invalid lastProcessedBlock cursor blocks event backfill: ${lastProcessed}`],
+    };
+  }
+
   const timestamps = new Map<bigint, number>();
-  let creditEvents = 0;
-  let harvestEvents = 0;
+  const transferCredits: Array<StoredCreditEvent> = [];
+  const harvestEventsToInsert: StoredHarvestEvent[] = [];
+  const harvestCredits: Array<StoredCreditEvent> = [];
 
   const transferLogs = await input.client.getLogs({
     address: input.config.contracts.diem,
@@ -173,23 +200,18 @@ export async function backfillCreditAndHarvestEvents(input: {
     toBlock,
   });
   for (const log of transferLogs) {
-    try {
-      const credit = decodeTransferCredit(input.config, log);
-      if (credit === null) {
-        continue;
-      }
-      input.storage.insertCreditEvent({
-        txHash: log.transactionHash,
-        logIndex: log.logIndex,
-        blockNumber: log.blockNumber,
-        timestamp: await timestampFor(input.client, timestamps, log.blockNumber),
-        source: "diem-transfer",
-        amountDiem: credit.amountDiem,
-      });
-      creditEvents += 1;
-    } catch {
+    const credit = decodeTransferCredit(input.config, log);
+    if (credit === null) {
       continue;
     }
+    transferCredits.push({
+      txHash: log.transactionHash,
+      logIndex: log.logIndex,
+      blockNumber: log.blockNumber,
+      timestamp: await timestampFor(input.client, timestamps, log.blockNumber),
+      source: "diem-transfer",
+      amountDiem: credit.amountDiem,
+    });
   }
 
   const harvestLogs = await input.client.getLogs({
@@ -198,39 +220,52 @@ export async function backfillCreditAndHarvestEvents(input: {
     toBlock,
   });
   for (const log of harvestLogs) {
-    try {
-      const harvest = decodeHarvest(log);
-      if (harvest === null) {
-        continue;
-      }
-      const timestamp = await timestampFor(input.client, timestamps, log.blockNumber);
-      input.storage.insertHarvestEvent({
+    const harvest = decodeHarvest(log);
+    if (harvest === null) {
+      continue;
+    }
+    const timestamp = await timestampFor(input.client, timestamps, log.blockNumber);
+    harvestEventsToInsert.push({
+      txHash: log.transactionHash,
+      logIndex: log.logIndex,
+      blockNumber: log.blockNumber,
+      timestamp,
+      eventName: harvest.event,
+      tokenIn: harvest.tokenIn,
+      amountIn: harvest.amountIn,
+      amountOut: harvest.amountOut,
+    });
+    if (harvest.creditDiem !== undefined) {
+      harvestCredits.push({
         txHash: log.transactionHash,
         logIndex: log.logIndex,
         blockNumber: log.blockNumber,
         timestamp,
-        eventName: harvest.event,
-        tokenIn: harvest.tokenIn,
-        amountIn: harvest.amountIn,
-        amountOut: harvest.amountOut,
+        source: "vvv-harvest",
+        amountDiem: harvest.creditDiem,
       });
-      harvestEvents += 1;
-      if (harvest.creditDiem !== undefined) {
-        input.storage.insertCreditEvent({
-          txHash: log.transactionHash,
-          logIndex: log.logIndex,
-          blockNumber: log.blockNumber,
-          timestamp,
-          source: "vvv-harvest",
-          amountDiem: harvest.creditDiem,
-        });
-        creditEvents += 1;
-      }
-    } catch {
-      continue;
     }
   }
 
+  const transferCreditTxs = new Set(transferCredits.map((event) => event.txHash.toLowerCase()));
+  const dedupedHarvestCredits = harvestCredits.filter((event) => !transferCreditTxs.has(event.txHash.toLowerCase()));
+
+  for (const event of transferCredits) {
+    input.storage.insertCreditEvent(event);
+  }
+  for (const event of harvestEventsToInsert) {
+    input.storage.insertHarvestEvent(event);
+  }
+  for (const event of dedupedHarvestCredits) {
+    input.storage.insertCreditEvent(event);
+  }
+
   input.storage.setMeta("lastProcessedBlock", toBlock.toString());
-  return { fromBlock, toBlock, creditEvents, harvestEvents, readiness };
+  return {
+    fromBlock,
+    toBlock,
+    creditEvents: transferCredits.length + dedupedHarvestCredits.length,
+    harvestEvents: harvestEventsToInsert.length,
+    readiness,
+  };
 }

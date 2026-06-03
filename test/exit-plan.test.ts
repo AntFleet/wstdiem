@@ -34,6 +34,7 @@ class MockExitPlanClient implements LoopPreflightClient, RouteQuoteClient {
   constructor(
     private readonly options: {
       blockNumber?: bigint;
+      chainId?: number;
       collateral?: bigint;
       borrowShares?: bigint;
       totalBorrowAssets?: bigint;
@@ -48,14 +49,14 @@ class MockExitPlanClient implements LoopPreflightClient, RouteQuoteClient {
   }
 
   async getChainId(): Promise<number> {
-    return 8453;
+    return this.options.chainId ?? 8453;
   }
 
   async getCode(_address: Address): Promise<Hex> {
     return "0x01";
   }
 
-  async readContract(args: { functionName: string }): Promise<unknown> {
+  async readContract(args: { functionName: string; blockNumber?: bigint }): Promise<unknown> {
     if (args.functionName === "market") {
       return [
         1_000n * WAD,
@@ -157,5 +158,26 @@ describe("live exit plan builder", () => {
     ]);
     expect(forced.params?.force).toBe(true);
     expect(forced.routeSlippage?.valid).toBe(false);
+  });
+
+  it("blocks exit params when protected Curve output cannot cover Morpho repay", async () => {
+    const client = new MockExitPlanClient({
+      totalBorrowAssets: 300n * WAD,
+      totalBorrowShares: 100n * WAD,
+      borrowShares: 50n * WAD,
+      quotedDiemOut: 100n * WAD,
+    });
+
+    const result = await buildLiveLoopExitPlan({
+      config: completeConfig(),
+      owner,
+      preflightClient: client,
+      routeQuoteClient: client,
+      slippageBps: 50,
+    });
+
+    expect(result.params).toBeNull();
+    expect(result.routeQuote?.minDiemOut).toBe((100n * WAD * 9_950n) / 10_000n);
+    expect(result.readiness).toEqual(["Curve exit route minDiemOut does not cover Morpho repay amount"]);
   });
 });

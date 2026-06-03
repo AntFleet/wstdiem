@@ -184,6 +184,7 @@ loop
   .option("--owner <address>", "owner override")
   .option("--from <address>", "transaction sender/operator override")
   .option("--live", "run RPC-backed preflight and executor simulation when config allows", false)
+  .option("--force", "for exit only: skip slippage guard while keeping simulation mandatory", false)
   .action(async function (this: Command) {
     await runAction(this, "loop simulate", async (config) => {
       const opts = this.opts<{
@@ -194,6 +195,7 @@ loop
         owner?: string;
         from?: string;
         live?: boolean;
+        force?: boolean;
       }>();
       if (!["open", "rebalance", "exit"].includes(opts.action)) {
         throw new CliError("INVALID_INPUT", "--action must be open, rebalance, or exit");
@@ -210,6 +212,7 @@ loop
           opts.slippageBps === undefined ? undefined : parseStrictInteger(opts.slippageBps, "--slippage-bps"),
         owner: opts.owner === undefined ? undefined : parseAddress(opts.owner, "--owner"),
         from: opts.from === undefined ? undefined : parseAddress(opts.from, "--from"),
+        force: opts.force,
         dryRun: true,
         nowSeconds,
       };
@@ -248,6 +251,7 @@ loop
           preflightClient: client,
           routeQuoteClient: client,
           slippageBps: commandOptions.slippageBps ?? config.execution.defaultSlippageBps,
+          force: commandOptions.force,
           nowSeconds,
         });
         params = exitPlan.params;

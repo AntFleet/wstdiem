@@ -7,8 +7,9 @@ import {
   buildLoopRebalanceParams,
   encodeLoopExecutorCall,
 } from "../loop/params.js";
+import { buildExitFlashFeeProof } from "../loop/flashFeeProof.js";
 import { staticLoopPreflight } from "../loop/preflight.js";
-import type { LoopExecutorParams, PreflightCheck } from "../loop/types.js";
+import type { ExitFlashFeeProof, LoopExecutorParams, PreflightCheck } from "../loop/types.js";
 import { parseDecimalToUnits, WAD } from "../metrics/math.js";
 import type { Address, AppConfig, Hex } from "../types/domain.js";
 import { CliError } from "./errors.js";
@@ -22,6 +23,7 @@ export interface LoopProjection {
     reason: string;
   };
   executorParamsAvailable: boolean;
+  exitFlashFeeProof?: ExitFlashFeeProof;
   executorCalldata?: Hex;
   preflightChecks: PreflightCheck[];
   targetLeverage?: number;
@@ -214,6 +216,7 @@ export function projectLoopCommand(config: AppConfig, options: LoopCommandOption
       reason: "SPEC001 executor simulation is not implemented in this product slice.",
     },
     executorParamsAvailable: executorParams !== null,
+    exitFlashFeeProof: buildExitFlashFeeProof(options.action, executorParams),
     executorCalldata,
     preflightChecks,
     targetLeverage: options.targetLeverage,

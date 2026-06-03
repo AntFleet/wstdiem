@@ -10,6 +10,7 @@ import type {
   BaseApyEvidence,
   LoopAction,
   LoopExecutorParams,
+  LoopExitParams,
   LoopOpenParams,
   LoopRebalanceParams,
   LoopSafetyEvidence,
@@ -38,6 +39,7 @@ export interface LoopPreflightClient {
     abi: unknown;
     functionName: string;
     args?: readonly unknown[];
+    blockNumber?: bigint;
   }): Promise<unknown>;
 }
 
@@ -82,6 +84,10 @@ export function staticLoopPreflight(config: AppConfig, owner: Address | null): P
 
 function addressEqual(left: Address, right: Address): boolean {
   return left.toLowerCase() === right.toLowerCase();
+}
+
+function isForcedExit(context: LoopPreflightContext): boolean {
+  return context.action === "exit" && context.params !== null && (context.params as LoopExitParams).force === true;
 }
 
 function parseMorphoMarketParams(value: unknown): ReadMorphoMarketParams | null {
@@ -339,9 +345,6 @@ function validateRouteSlippageEvidence(
   if (evidence === undefined) {
     return "route quote and slippage evidence is required for live loop validation";
   }
-  if (!evidence.valid) {
-    return "route slippage evidence is marked invalid";
-  }
   if (evidence.action !== context.action) {
     return `route slippage evidence action ${evidence.action} does not match ${context.action}`;
   }
@@ -360,7 +363,11 @@ function validateRouteSlippageEvidence(
   if (evidence.maxSlippageBps > config.execution.maxSlippageBps) {
     return `route max slippage ${evidence.maxSlippageBps} bps exceeds configured max ${config.execution.maxSlippageBps} bps`;
   }
-  if (evidence.priceImpactBps > config.execution.maxCurvePriceImpactBps) {
+  const forcedExit = isForcedExit(context);
+  if (!evidence.valid && !forcedExit) {
+    return "route slippage evidence is marked invalid";
+  }
+  if (evidence.priceImpactBps > config.execution.maxCurvePriceImpactBps && !forcedExit) {
     return `route price impact ${evidence.priceImpactBps.toFixed(2)} bps exceeds configured max ${config.execution.maxCurvePriceImpactBps} bps`;
   }
   if (context.params !== null && context.action === "rebalance") {
@@ -577,10 +584,14 @@ function checkRouteSlippage(config: AppConfig, context?: LoopPreflightContext): 
   if (evidenceError !== null || evidence === undefined) {
     return check("route-slippage", "fail", evidenceError ?? "route quote and slippage evidence is required");
   }
+  const forcedExit = isForcedExit(context);
+  const forcedPriceOverride = forcedExit && evidence.priceImpactBps > config.execution.maxCurvePriceImpactBps;
   return check(
     "route-slippage",
     "pass",
-    `route price impact ${evidence.priceImpactBps.toFixed(2)} bps within ${config.execution.maxCurvePriceImpactBps} bps cap`,
+    forcedPriceOverride
+      ? `route price impact ${evidence.priceImpactBps.toFixed(2)} bps exceeds ${config.execution.maxCurvePriceImpactBps} bps cap; force override active`
+      : `route price impact ${evidence.priceImpactBps.toFixed(2)} bps within ${config.execution.maxCurvePriceImpactBps} bps cap`,
   );
 }
 
@@ -666,9 +677,23 @@ export async function runLoopPreflight(
   }
 
   checks.push(await checkMorphoMarketParams(config, client));
-  checks.push(checkProjectedHealthFactor(config, context));
-  checks.push(await checkCurveDepth({ config, owner, client, context }));
-  checks.push(await checkNetApy({ config, client, context }));
+  if (context?.action === "exit") {
+    checks.push(
+      check(
+        "projected-health-factor",
+        "skip",
+        "exit unwinds the position; post-loop target leverage health-factor check is not applicable",
+      ),
+    );
+    checks.push(
+      check("curve-depth", "skip", "exit reduces exposure; projected Curve depth increase check is not applicable"),
+    );
+    checks.push(check("net-apy", "skip", "exit does not increase leverage; target leverage carry check is not applicable"));
+  } else {
+    checks.push(checkProjectedHealthFactor(config, context));
+    checks.push(await checkCurveDepth({ config, owner, client, context }));
+    checks.push(await checkNetApy({ config, client, context }));
+  }
   checks.push(await checkOracleDeviation({ config, client }));
   checks.push(checkRouteSlippage(config, context));
 

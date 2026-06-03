@@ -3,6 +3,7 @@ import { encodeAbiParameters, encodeEventTopics } from "viem";
 import { erc20TransferEventAbi } from "../src/abi/erc20.js";
 import { feeRouterHarvestEventAbis } from "../src/abi/feeRouter.js";
 import {
+  INITIAL_BACKFILL_LOOKBACK_BLOCKS,
   REORG_SAFETY_OVERLAP_BLOCKS,
   backfillCreditAndHarvestEvents,
   type BackfillBlock,
@@ -41,10 +42,17 @@ class MemoryBackfillStorage implements BackfillStorage {
   }
 }
 
+class FailingCreditStorage extends MemoryBackfillStorage {
+  insertCreditEvent(_event: StoredCreditEvent): void {
+    throw new Error("sqlite busy");
+  }
+}
+
 class MemoryBackfillClient implements BackfillClient {
   constructor(
     private readonly logs: BackfillLog[],
     private readonly timestamps: Record<string, number>,
+    private readonly failBlocks = new Set<bigint>(),
   ) {}
 
   async getLogs(args: { address: Address; fromBlock: bigint; toBlock: bigint }): Promise<BackfillLog[]> {
@@ -57,6 +65,9 @@ class MemoryBackfillClient implements BackfillClient {
   }
 
   async getBlock(args: { blockNumber: bigint }): Promise<BackfillBlock> {
+    if (this.failBlocks.has(args.blockNumber)) {
+      throw new Error("block read failed");
+    }
     return { timestamp: this.timestamps[args.blockNumber.toString()] ?? Number(args.blockNumber) };
   }
 }
@@ -211,6 +222,67 @@ describe("credit and harvest event backfill", () => {
     expect(storage.getMeta("lastProcessedBlock")).toBe("250");
   });
 
+  it("uses a bounded initial lookback when no cursor exists", async () => {
+    const storage = new MemoryBackfillStorage();
+
+    const result = await backfillCreditAndHarvestEvents({
+      config: completeConfig(),
+      client: new MemoryBackfillClient([], {}),
+      storage,
+      finalizedBlock: 400_000n,
+    });
+
+    expect(result.fromBlock).toBe(400_000n - INITIAL_BACKFILL_LOOKBACK_BLOCKS);
+    expect(result.toBlock).toBe(400_000n);
+    expect(storage.getMeta("lastProcessedBlock")).toBe("400000");
+  });
+
+  it("does not double-count a VVV harvest when the same transaction has a canonical DIEM transfer", async () => {
+    const storage = new MemoryBackfillStorage();
+    const client = new MemoryBackfillClient(
+      [
+        transferLog({
+          from: FEE_ROUTER,
+          to: INFERENCE_VAULT,
+          value: 7n * WAD,
+          blockNumber: 100n,
+          logIndex: 1,
+          txHash: "0xddd",
+        }),
+        vvvHarvestLog({
+          vvvIn: 3n * WAD,
+          diemCredited: 7n * WAD,
+          blockNumber: 100n,
+          logIndex: 2,
+          txHash: "0xddd",
+        }),
+      ],
+      { "100": 1_700_000_100 },
+    );
+
+    const result = await backfillCreditAndHarvestEvents({
+      config: completeConfig(),
+      client,
+      storage,
+      finalizedBlock: 120n,
+      fromBlock: 90n,
+    });
+
+    expect(result.creditEvents).toBe(1);
+    expect(result.harvestEvents).toBe(1);
+    expect(storage.creditEvents).toEqual([
+      {
+        txHash: "0xddd",
+        logIndex: 1,
+        blockNumber: 100n,
+        timestamp: 1_700_000_100,
+        source: "diem-transfer",
+        amountDiem: 7n * WAD,
+      },
+    ]);
+    expect(storage.harvestEvents).toHaveLength(1);
+  });
+
   it("does not advance the cursor when deployment addresses are missing", async () => {
     const storage = new MemoryBackfillStorage();
     const config = completeConfig();
@@ -229,7 +301,7 @@ describe("credit and harvest event backfill", () => {
     expect(storage.getMeta("lastProcessedBlock")).toBeNull();
   });
 
-  it("ignores corrupt cursor metadata instead of failing watch backfill", async () => {
+  it("blocks on corrupt cursor metadata instead of skipping history", async () => {
     const storage = new MemoryBackfillStorage();
     storage.setMeta("lastProcessedBlock", "not-a-block");
 
@@ -240,8 +312,42 @@ describe("credit and harvest event backfill", () => {
       finalizedBlock: 250n,
     });
 
-    expect(result.fromBlock).toBe(250n);
-    expect(result.readiness).toEqual(["invalid lastProcessedBlock cursor ignored: not-a-block"]);
-    expect(storage.getMeta("lastProcessedBlock")).toBe("250");
+    expect(result.fromBlock).toBe(0n);
+    expect(result.readiness).toEqual(["invalid lastProcessedBlock cursor blocks event backfill: not-a-block"]);
+    expect(storage.getMeta("lastProcessedBlock")).toBe("not-a-block");
+  });
+
+  it("does not advance the cursor when event reads or writes fail", async () => {
+    const log = transferLog({
+      from: FEE_ROUTER,
+      to: INFERENCE_VAULT,
+      value: 5n * WAD,
+      blockNumber: 100n,
+      logIndex: 1,
+      txHash: "0xaaa",
+    });
+    const readFailureStorage = new MemoryBackfillStorage();
+    await expect(
+      backfillCreditAndHarvestEvents({
+        config: completeConfig(),
+        client: new MemoryBackfillClient([log], {}, new Set([100n])),
+        storage: readFailureStorage,
+        finalizedBlock: 120n,
+        fromBlock: 90n,
+      }),
+    ).rejects.toThrow(/block read failed/);
+    expect(readFailureStorage.getMeta("lastProcessedBlock")).toBeNull();
+
+    const writeFailureStorage = new FailingCreditStorage();
+    await expect(
+      backfillCreditAndHarvestEvents({
+        config: completeConfig(),
+        client: new MemoryBackfillClient([log], { "100": 1_700_000_100 }),
+        storage: writeFailureStorage,
+        finalizedBlock: 120n,
+        fromBlock: 90n,
+      }),
+    ).rejects.toThrow(/sqlite busy/);
+    expect(writeFailureStorage.getMeta("lastProcessedBlock")).toBeNull();
   });
 });

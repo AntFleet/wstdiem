@@ -82,6 +82,18 @@ export interface LoopSafetyEvidence {
   signer?: SignerEvidence;
 }
 
+export interface ExitFlashFeeProof {
+  repayAmountDiem?: string;
+  flashFee: "unresolved";
+  flashFeeSource: "unresolved";
+  flashLoanProvider: "unconfigured";
+  totalFlashRepaymentDiem: "unresolved";
+  minDiemOut?: string;
+  morphoRepayCovered?: boolean;
+  feeInclusiveRepayCovered: "blocked";
+  reason: string;
+}
+
 export interface LoopSimulationRequest {
   action: LoopAction;
   owner: Address;
@@ -92,6 +104,7 @@ export interface LoopSimulationResult {
   status: "passed" | "failed" | "blocked";
   action: LoopAction;
   preflightChecks: PreflightCheck[];
+  exitFlashFeeProof?: ExitFlashFeeProof;
   calldata?: `0x${string}`;
   gasEstimate?: string;
   error?: {

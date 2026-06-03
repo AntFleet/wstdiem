@@ -1,5 +1,6 @@
 import { loopExecutorAbi } from "../abi/loopExecutor.js";
 import type { Address, AppConfig, Hex } from "../types/domain.js";
+import { buildExitFlashFeeProof } from "./flashFeeProof.js";
 import { encodeLoopExecutorCall } from "./params.js";
 import { hasPreflightFailures, runLoopPreflight, type LoopPreflightClient } from "./preflight.js";
 import type { LoopAction, LoopExecutorParams, LoopSafetyEvidence, LoopSimulationResult } from "./types.js";
@@ -47,6 +48,7 @@ export async function simulateLoopExecutorCall(input: {
         code: "PREFLIGHT_READ_FAILED",
         message: error instanceof Error ? error.message : String(error),
       },
+      exitFlashFeeProof: buildExitFlashFeeProof(input.action, input.params),
     };
   }
   if (input.params === null) {
@@ -86,6 +88,7 @@ export async function simulateLoopExecutorCall(input: {
       status: "blocked",
       action: input.action,
       preflightChecks,
+      exitFlashFeeProof: buildExitFlashFeeProof(input.action, input.params),
       error: {
         code: "SIMULATION_CLIENT_MISSING",
         message: "No simulation client provided; simulateContract and estimateGas were not run.",
@@ -103,6 +106,7 @@ export async function simulateLoopExecutorCall(input: {
       status: "blocked",
       action: input.action,
       preflightChecks,
+      exitFlashFeeProof: buildExitFlashFeeProof(input.action, input.params),
       error: {
         code: "PREFLIGHT_FAILED",
         message: "LoopExecutor simulation blocked by failed preflight checks.",
@@ -130,6 +134,7 @@ export async function simulateLoopExecutorCall(input: {
       status: "passed",
       action: input.action,
       preflightChecks,
+      exitFlashFeeProof: buildExitFlashFeeProof(input.action, input.params),
       calldata: calldata as Hex,
       gasEstimate: gas.toString(),
     };
@@ -139,6 +144,7 @@ export async function simulateLoopExecutorCall(input: {
       status: "failed",
       action: input.action,
       preflightChecks,
+      exitFlashFeeProof: buildExitFlashFeeProof(input.action, input.params),
       calldata: calldata as Hex,
       error: {
         code: "SIMULATION_FAILED",

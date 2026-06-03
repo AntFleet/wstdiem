@@ -9,12 +9,14 @@ const WSTDIEM_INDEX = 1n;
 const DIEM_INDEX = 0n;
 
 export interface RouteQuoteClient {
+  getChainId(): Promise<number>;
   getBlockNumber(): Promise<bigint>;
   readContract(args: {
     address: `0x${string}`;
     abi: Abi;
     functionName: string;
     args?: readonly unknown[];
+    blockNumber?: bigint;
   }): Promise<unknown>;
 }
 
@@ -73,19 +75,25 @@ export async function quoteCurveExitRoute(input: {
     return { readiness: ["wstDiemIn must be greater than zero for Curve exit route quotes"] };
   }
 
-  const [blockNumber, expectedDiemOutAtNav, quotedDiemOut] = await Promise.all([
-    input.client.getBlockNumber(),
+  const chainId = await input.client.getChainId();
+  if (chainId !== input.config.chainId) {
+    return { readiness: [`unexpected route quote chainId ${chainId}; expected ${input.config.chainId}`] };
+  }
+  const blockNumber = await input.client.getBlockNumber();
+  const [expectedDiemOutAtNav, quotedDiemOut] = await Promise.all([
     input.client.readContract({
       address: input.config.contracts.inferenceVault,
       abi: inferenceVaultAbi,
       functionName: "convertToAssets",
       args: [input.wstDiemIn],
+      blockNumber,
     }) as Promise<bigint>,
     input.client.readContract({
       address: input.config.contracts.curvePool,
       abi: curvePoolAbi,
       functionName: "get_dy",
       args: [WSTDIEM_INDEX, DIEM_INDEX, input.wstDiemIn],
+      blockNumber,
     }) as Promise<bigint>,
   ]);
   if (expectedDiemOutAtNav <= 0n) {
@@ -112,7 +120,7 @@ export async function quoteCurveExitRoute(input: {
     evidence: {
       source: "route-quote",
       action: "exit",
-      chainId: input.config.chainId,
+      chainId,
       blockNumber,
       maxSlippageBps: input.slippageBps,
       priceImpactBps: impact,

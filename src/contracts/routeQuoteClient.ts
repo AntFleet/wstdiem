@@ -14,6 +14,9 @@ export async function createViemRouteQuoteClient(config: AppConfig): Promise<Rou
     transport: http(selection.url, { timeout: config.rpc.timeoutMs }),
   });
   return {
+    async getChainId() {
+      return client.getChainId();
+    },
     async getBlockNumber() {
       return client.getBlockNumber();
     },
@@ -23,6 +26,7 @@ export async function createViemRouteQuoteClient(config: AppConfig): Promise<Rou
         abi: args.abi,
         functionName: args.functionName,
         args: args.args,
+        blockNumber: args.blockNumber,
       });
     },
   };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config/defaults.js";
 import { simulateMorphoAuthorization } from "../src/loop/authorization.js";
+import { buildLiveLoopExitPlan } from "../src/loop/exitPlan.js";
 import { buildConfiguredMarketParams, buildLoopRebalanceParams } from "../src/loop/params.js";
 import { runLoopPreflight, type LoopPreflightClient } from "../src/loop/preflight.js";
 import { simulateLoopExecutorCall, type LoopSimulationClient } from "../src/loop/simulator.js";
@@ -83,6 +84,7 @@ class MockPreflightClient implements LoopPreflightClient {
       morphoOraclePrice?: bigint;
       curveDiemBalance?: bigint;
       curveWstDiemBalance?: bigint;
+      curveExitQuote?: bigint;
       navWad?: bigint;
       borrowRatePerSecond?: bigint;
     } = {},
@@ -96,7 +98,7 @@ class MockPreflightClient implements LoopPreflightClient {
     return this.options.code ?? "0x01";
   }
 
-  async readContract(args: { functionName: string; args?: readonly unknown[] }): Promise<unknown> {
+  async readContract(args: { functionName: string; args?: readonly unknown[]; blockNumber?: bigint }): Promise<unknown> {
     if (args.functionName === "asset") {
       return this.options.vaultAsset ?? DEFAULT_CONFIG.contracts.diem;
     }
@@ -108,6 +110,9 @@ class MockPreflightClient implements LoopPreflightClient {
       return args.args?.[0] === 0n
         ? (this.options.curveDiemBalance ?? 500n * WAD)
         : (this.options.curveWstDiemBalance ?? 500n * WAD);
+    }
+    if (args.functionName === "get_dy") {
+      return this.options.curveExitQuote ?? 99n * WAD;
     }
     if (args.functionName === "isAuthorized") {
       return this.options.authorized ?? true;
@@ -314,6 +319,103 @@ describe("loop preflight and simulation", () => {
     expect(result.status).toBe("passed");
     expect(result.gasEstimate).toBe("999");
     expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("route-slippage:pass");
+  });
+
+  it("passes live exit simulation with exact exit params and route quote evidence", async () => {
+    const config = completeConfig();
+    const client = new MockSimulationClient({
+      gas: 999n,
+      positionBorrowShares: 50n * WAD,
+      marketTotalBorrowAssets: 100n * WAD,
+      marketTotalBorrowShares: 100n * WAD,
+    });
+    const exitPlan = await buildLiveLoopExitPlan({
+      config,
+      owner,
+      preflightClient: client,
+      routeQuoteClient: client,
+      slippageBps: 25,
+      nowSeconds: 1,
+    });
+    expect(exitPlan.params).not.toBeNull();
+
+    const result = await simulateLoopExecutorCall({
+      config,
+      action: "exit",
+      owner,
+      from: owner,
+      params: exitPlan.params,
+      safetyEvidence: {
+        ...safetyEvidence(0.2),
+        routeSlippage: exitPlan.routeSlippage,
+      },
+      client,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.gasEstimate).toBe("999");
+    expect(result.exitFlashFeeProof).toMatchObject({
+      repayAmountDiem: "50000000000000000000",
+      flashFee: "unresolved",
+      flashFeeSource: "unresolved",
+      flashLoanProvider: "unconfigured",
+      totalFlashRepaymentDiem: "unresolved",
+      minDiemOut: "98752500000000000000",
+      morphoRepayCovered: true,
+      feeInclusiveRepayCovered: "blocked",
+    });
+    expect(result.exitFlashFeeProof?.reason).toContain("fee-inclusive proof is blocked");
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain(
+      "projected-health-factor:skip",
+    );
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("curve-depth:skip");
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("net-apy:skip");
+    expect(result.preflightChecks.map((check) => `${check.key}:${check.status}`)).toContain("route-slippage:pass");
+  });
+
+  it("passes forced live exit simulation when route impact exceeds the configured cap", async () => {
+    const config = completeConfig();
+    const client = new MockSimulationClient({
+      gas: 999n,
+      positionBorrowShares: 50n * WAD,
+      marketTotalBorrowAssets: 100n * WAD,
+      marketTotalBorrowShares: 100n * WAD,
+      curveExitQuote: 98n * WAD,
+    });
+    const exitPlan = await buildLiveLoopExitPlan({
+      config,
+      owner,
+      preflightClient: client,
+      routeQuoteClient: client,
+      slippageBps: 25,
+      force: true,
+      nowSeconds: 1,
+    });
+    expect(exitPlan.params?.force).toBe(true);
+    expect(exitPlan.routeSlippage?.valid).toBe(false);
+
+    const result = await simulateLoopExecutorCall({
+      config,
+      action: "exit",
+      owner,
+      from: owner,
+      params: exitPlan.params,
+      safetyEvidence: {
+        ...safetyEvidence(0.2),
+        routeSlippage: exitPlan.routeSlippage,
+      },
+      client,
+    });
+    const routeSlippage = result.preflightChecks.find((check) => check.key === "route-slippage");
+
+    expect(result.status).toBe("passed");
+    expect(result.exitFlashFeeProof).toMatchObject({
+      flashFee: "unresolved",
+      feeInclusiveRepayCovered: "blocked",
+      morphoRepayCovered: true,
+    });
+    expect(routeSlippage?.status).toBe("pass");
+    expect(routeSlippage?.message).toContain("force override active");
   });
 
   it("fails route slippage when quote evidence exceeds configured price impact cap", async () => {

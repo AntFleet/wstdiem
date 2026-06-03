@@ -96,6 +96,18 @@ describe("loop safety behavior", () => {
       action: "exit",
     });
     expect(exit.params).toBeNull();
+
+    const projection = projectLoopCommand(config, {
+      action: "exit",
+      dryRun: true,
+    });
+    expect(projection.exitFlashFeeProof).toMatchObject({
+      flashFee: "unresolved",
+      flashFeeSource: "unresolved",
+      flashLoanProvider: "unconfigured",
+      totalFlashRepaymentDiem: "unresolved",
+      feeInclusiveRepayCovered: "blocked",
+    });
   });
 
   it("builds typed executor params for configured rebalance commands", () => {

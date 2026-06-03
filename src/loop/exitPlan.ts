@@ -76,6 +76,15 @@ export async function buildLiveLoopExitPlan(input: {
   if (quoteResult.quote === undefined || quoteResult.evidence === undefined) {
     return { params: null, readiness };
   }
+  if (quoteResult.quote.minDiemOut < repayAmountDiem) {
+    readiness.push("Curve exit route minDiemOut does not cover Morpho repay amount");
+    return {
+      params: null,
+      routeQuote: quoteResult.quote,
+      routeSlippage: quoteResult.evidence,
+      readiness,
+    };
+  }
   if (!input.force && !quoteResult.evidence.valid) {
     readiness.push("Curve exit route price impact exceeds configured cap; use force only after external review");
     return {
