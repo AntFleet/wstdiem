@@ -1,0 +1,38 @@
+{
+  "description": "PR-13 A6-4 + PR-14 audit M-1 ABI parity snapshot. Each function entry is a canonical Solidity function signature and its keccak256-derived 4-byte selector; each event entry is a canonical Solidity event signature and its keccak256-derived 32-byte topic0. The SDK's inline ABIs MUST produce these selectors / topics at runtime via viem.toFunctionSelector / viem.toEventSelector. Regenerate by running `npx vitest run test/abi-parity.test.ts --update` (test fails closed on drift).",
+  "generatedAt": "2026-06-13",
+  "selectors": {
+    "executeOpen(((address,uint256,address,bytes32,address,uint256,bytes32,uint64,uint248,uint8),(uint256,uint256,uint256,uint16),uint8,uint8,uint8,(address,address,address,address,uint256),(uint256,uint256,uint256,uint16,uint16,uint16,uint256,uint16,uint16,(uint256,uint256,uint256)),(bytes32,bytes32,bytes32,bytes32,bytes32)),bytes,(bytes32,bytes32,address,bytes32,uint256,uint16,(bytes32,address,uint8,uint256,bytes32)[]),bytes32)": "0x1e32d5a9",
+    "executeRebalance(((address,uint256,address,bytes32,address,uint256,bytes32,uint64,uint248,uint8),(uint256,uint256,uint256,uint16),uint8,uint8,uint8,(address,address,address,address,uint256),(uint16,uint16,uint256,uint16,uint256,uint256,uint16,uint16,uint16,(uint256,uint256,uint256)),(bytes32,bytes32,bytes32,bytes32,bytes32)),bytes,(bytes32,bytes32,address,bytes32,uint256,uint16,(bytes32,address,uint8,uint256,bytes32)[]),bytes32)": "0xe7e90a45",
+    "executeExit(((address,uint256,address,bytes32,address,uint256,bytes32,uint64,uint248,uint8),(uint256,uint256,uint256,uint16),uint8,uint8,uint8,(address,address,address,address,uint256),(uint256,uint256,uint16,uint16,uint16,(uint256,uint256,uint256),bool,bool),(bytes32,bytes32,bytes32,bytes32,bytes32)),bytes,(bytes32,bytes32,address,bytes32,uint256,uint16,(bytes32,address,uint8,uint256,bytes32)[]),bytes32)": "0x173f6d39",
+    "executeForceExit(((address,uint256,address,bytes32,address,uint256,bytes32,uint64,uint248,uint8),(uint256,uint256,uint256,uint16),uint8,uint8,uint8,(address,address,address,address,uint256),(uint256,uint256,uint16,uint256,uint16,uint8),(bytes32,bytes32,bytes32,bytes32,bytes32)),bytes,(bytes32,bytes32,address,bytes32,uint256,uint16,(bytes32,address,uint8,uint256,bytes32)[]),bytes32)": "0x6ee8a427",
+    "registryVersion()": "0x0f9be51c",
+    "registryMerkleRoot()": "0x618f8ed3",
+    "marketParams(bytes32)": "0x7fd065f9",
+    "executorFor(uint8)": "0x9a31e9f2",
+    "validateExternalConfig(bytes32,uint8)": "0x7cba8d79",
+    "domainSeparator()": "0xf698da25",
+    "nonceBitmap(address,uint64,uint8,uint248)": "0x1eb1403e",
+    "position(bytes32,address)": "0x93c52062",
+    "market(bytes32)": "0x5c60e39a",
+    "latestRoundData()": "0xfeaf968c",
+    "convertToAssets(uint256)": "0x07a2d13a",
+    "lastAnchorBlock()": "0xe74dea1d",
+    "get_dy(int128,int128,uint256)": "0x5e0d443f"
+  },
+  "events": {
+    "LoopActionStarted(bytes32,uint8,address,bytes32,uint256)": "0x86ff2732d0de6f11085c5e16e612cdf6158c71eb65a78a68f226c3bb8c8f1bb8",
+    "LoopActionStep(address,bytes32,bytes32,uint8,uint8,address,bytes4,bool)": "0xf2636491f56ac06d68318c545444b3788082032644680d6c71a842c718176ff3",
+    "LoopActionCompleted(bytes32,uint16)": "0xb6cc05a2294b3af838251e3ca09ba69028705d63b129902044db0f49f9352ada",
+    "LoopOpenedV2(bytes32,address,bytes32,uint256,uint256,uint256)": "0xe661172e53ebb2344c601d42f35669d4051b616b487d92e9d4282848bbe28740",
+    "LoopRebalancedV2(bytes32,address,bytes32,int256,int256,uint256)": "0xae868bf699e94e8cd3a8498d891ed9b5c958ef11a769a9cf81ead67aa8dd732a",
+    "LoopExitedV2(bytes32,address,bytes32,uint256,uint256,uint256)": "0x0286c768b72a4ed0d9d83d1a4e1446f79c96e534381d985615a16744707c2903",
+    "LoopForceExitedV2(bytes32,address,bytes32,uint256,uint256,uint8)": "0xf463bafeee4dca8787b9fc2689ef7f0f9bef3fbb1d00389c26fe35937fc00155",
+    "PolicyCreated(address,uint64,uint8,bytes32,uint64)": "0xecf54a3f52643469e8b6581365c88cb61617a0f589c77029da9a5723e0203b79",
+    "PolicyUpdated(address,uint64,bytes32,bytes32,uint64)": "0x7498984d09fbd9157dd0cebe6d53cef6f149bd5aa8e3da2c0ac3c47ccaedb1d2",
+    "PolicyRevoking(address,uint64,uint64)": "0x2b4d82939bd38a87aab409f7cdd1df75f1d3ec472226fb5885455c1c76a2962d",
+    "AutomationExecuted(uint64,bytes32,address)": "0x9423b35c55f0c0658649d628fe975c8e310069d26016885364623dda773c67c5",
+    "AutomationFailed(uint64,bytes32,address,bytes4)": "0x9e19c5b113b167ffe620a72c77b840117e361f78278d4a77404995b77851c5d1",
+    "StateSnapshotAccepted(uint256,bytes32,address)": "0xedd3378d4d02b547a89c8c4c39bda67cf4d9f5d4136960921af39eaa2207a70e"
+  }
+}

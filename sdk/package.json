@@ -1,0 +1,53 @@
+{
+  "name": "@wstdiem/sdk",
+  "version": "0.1.0",
+  "description": "wstDIEM v0.1.0-rc1 SDK — branded types, EIP-712 typed-data, action digest construction, ActionEvidence canonical encoder, G-PM gate evaluators, FailClosedErrorName registry. Isomorphic (browser + Node).",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./eip712": {
+      "types": "./dist/eip712/index.d.ts",
+      "import": "./dist/eip712/index.js"
+    },
+    "./evidence": {
+      "types": "./dist/evidence/index.d.ts",
+      "import": "./dist/evidence/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "import": "./dist/errors/index.js"
+    },
+    "./gates": {
+      "types": "./dist/gates/index.d.ts",
+      "import": "./dist/gates/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "viem": "^2.29.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false
+}
