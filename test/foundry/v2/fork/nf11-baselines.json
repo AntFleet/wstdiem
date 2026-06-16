@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "pr8-nf11-v1",
+  "forkBlockNumber": 47264207,
+  "sampleCount": 303,
+  "sampleBlockRange": {
+    "start": 46961807,
+    "end": 47264207,
+    "intervalBlocks": 1000
+  },
+  "fields": {
+    "curveLiquidityDriftBps": {
+      "min": "proxy: USDC+WETH balances in Uniswap USDC/WETH 500 pool",
+      "maxDriftBps": 402,
+      "proposedBand": 1000
+    },
+    "curveBalancesDriftBps": {
+      "min": "proxy: per-token balances in Uniswap USDC/WETH 500 pool",
+      "maxDriftBps": 311,
+      "proposedBand": 500
+    },
+    "vaultNavDriftBps": {
+      "min": "fork-local ERC4626 proxy at 1.0005 assets/share",
+      "maxDriftBps": 0,
+      "proposedBand": 50
+    },
+    "uniswapTickDriftBps": {
+      "maxDriftBps": 73,
+      "proposedBand": 250
+    },
+    "chainlinkStalenessSeconds": {
+      "max": 3600,
+      "proposedBand": 7200
+    },
+    "sequencerStalenessSeconds": {
+      "max": 1781317760,
+      "proposedBand": 3600
+    },
+    "perFeedStaleness": {
+      "ETH_USD": 7200,
+      "BASE_SEQUENCER_UPTIME": 3600
+    }
+  },
+  "forceExitBufferBps": 250,
+  "thirdPartyRepayMinNotional": "10000000",
+  "rationale": "Base finalized block 47264207. Bps fields use max observed drift times 1.5 rounded up to 50/100/250/500/1000 bps. Sequencer startedAt is an uptime epoch, so the locked operator staleness threshold remains the existing 3600 second grace rather than elapsed uptime."
+}

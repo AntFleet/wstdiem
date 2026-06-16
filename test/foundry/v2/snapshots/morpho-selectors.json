@@ -1,0 +1,9 @@
+{
+  "SUPPLY_COLLATERAL": "0x238d6579",
+  "BORROW": "0x50d8cd4b",
+  "REPAY": "0x20b76e81",
+  "WITHDRAW_COLLATERAL": "0x8720316d",
+  "SET_AUTHORIZATION": "0xeecea000",
+  "ACCRUE_INTEREST": "0x151c1ade",
+  "LIQUIDATE": "0xd8eabcb8"
+}

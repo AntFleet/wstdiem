@@ -1,0 +1,44 @@
+{
+  "network": "base-mainnet",
+  "chainId": 8453,
+  "governanceMultisig": "0x0000000000000000000000000000000000000000",
+  "initialGuardian": "0x0000000000000000000000000000000000000000",
+  "anchorSubmitter": "0x0000000000000000000000000000000000000000",
+  "indexerSigningKey": "0x0000000000000000000000000000000000000000",
+  "protocolFeeReceiver": "0x0000000000000000000000000000000000000000",
+  "automationFeeReceiver": "0x0000000000000000000000000000000000000000",
+  "morpho": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+  "uniswapV3Factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+  "baseSequencerFeed": "0xBCF85224fc0756B9Fa45aA7892530B47e10b6433",
+  "bloxrouteProtectEndpoint": "https://api.blxrbdn.com",
+  "sequencerFallback": "https://mainnet-sequencer.base.org",
+  "markets": [
+    {
+      "id": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "loanToken": "0x0000000000000000000000000000000000000000",
+      "collateralToken": "0x0000000000000000000000000000000000000000",
+      "oracle": "0x0000000000000000000000000000000000000000",
+      "irm": "0x0000000000000000000000000000000000000000",
+      "lltv": 860000000000000000,
+      "curvePool": "0x0000000000000000000000000000000000000000",
+      "wstDiemVault": "0x0000000000000000000000000000000000000000",
+      "uniswapV3FlashPool": "0x0000000000000000000000000000000000000000",
+      "uniswapV3FlashFeeTier": 500,
+      "chainlinkFeed": "0x0000000000000000000000000000000000000000"
+    }
+  ],
+  "fingerprintToleranceBps": {
+    "curveLiquidity": 1000,
+    "curveBalances": 500,
+    "vaultNav": 50
+  },
+  "anchorCadenceBlocks": 100,
+  "harvestCoolingBlocks": 30,
+  "forceExitMaxDeadlineSeconds": 86400,
+  "attemptThrottleWindowBlocks": 60,
+  "maxFailedAttemptsPerWindow": 5,
+  "operatorNotes": [
+    "Replace zero-address placeholders before broadcast.",
+    "wstDIEM vault and Curve pool remain registry-pinned placeholders until those venues are deployed."
+  ]
+}

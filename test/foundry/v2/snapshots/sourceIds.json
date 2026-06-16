@@ -1,0 +1,37 @@
+{
+  "SOURCE_MORPHO_POSITION": {
+    "label": "wstdiem.source.morpho-position",
+    "constant_name": "SOURCE_MORPHO_POSITION",
+    "hash": "0x4572e563d333c7c905811411af5189452e337a48560e391102fd73e6145d19e4"
+  },
+  "SOURCE_VAULT_NAV": {
+    "label": "wstdiem.source.vault-nav",
+    "constant_name": "SOURCE_VAULT_NAV",
+    "hash": "0x4accd06ade91ccf01d8a83bd5e4fd7d94ac8ac13470f2df8a1a9c568a935829f"
+  },
+  "SOURCE_CHAINLINK_FEED": {
+    "label": "wstdiem.source.chainlink-feed",
+    "constant_name": "SOURCE_CHAINLINK_FEED",
+    "hash": "0xec5adf640ecb17c79d036d9acecb40e1eca6e23d52daf087aa2b6e5411c37278"
+  },
+  "SOURCE_CURVE_QUOTE": {
+    "label": "wstdiem.source.curve-quote",
+    "constant_name": "SOURCE_CURVE_QUOTE",
+    "hash": "0x3c23e543081ccc283e55ac0a6b70fad7ba6fff38442b23f88681ae1b059a34b3"
+  },
+  "SOURCE_SEQUENCER_UPTIME": {
+    "label": "wstdiem.source.sequencer-uptime",
+    "constant_name": "SOURCE_SEQUENCER_UPTIME",
+    "hash": "0x4dffde18d10c49ab00615120c262970f39d158df51a8c6e1fbe07a51ce68ada8"
+  },
+  "SOURCE_HARVEST_EVENT": {
+    "label": "wstdiem.source.harvest-event",
+    "constant_name": "SOURCE_HARVEST_EVENT",
+    "hash": "0xe0ae42df22d3bb227e56e47ce0c42f373ca2ad2e133e9b927cb22ceb04aa1067"
+  },
+  "SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT": {
+    "label": "wstdiem.source.external-protocol-fingerprint",
+    "constant_name": "SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT",
+    "hash": "0xdfa655c0e685077e5f5785b06545671383302adada35d41ba71149ee27cca2cb"
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "DOMAIN_SEPARATOR_TYPEHASH": {
+    "name": "DOMAIN_SEPARATOR_TYPEHASH",
+    "preimage": "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)",
+    "hash": "0xd87cd6ef79d4e2b95e15ce8abf732db51ec771f1ca2edccf22a46c729ac56472"
+  },
+  "ACTION_IDENTITY_TYPEHASH": {
+    "name": "ACTION_IDENTITY_TYPEHASH",
+    "preimage": "ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)",
+    "hash": "0xb9494d30193e1b3e8890ad413f29c853720fab4b904688d2a4e400eebfae42d1"
+  },
+  "FRESHNESS_TYPEHASH": {
+    "name": "FRESHNESS_TYPEHASH",
+    "preimage": "Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)",
+    "hash": "0xfaf6f77d84cecbe8fd6899cc48a37cdc0fdbd0f826f56803ee64456d6a9d3a67"
+  },
+  "FEE_CAPS_TYPEHASH": {
+    "name": "FEE_CAPS_TYPEHASH",
+    "preimage": "FeeCaps(uint256 flashFeeCap,uint256 protocolFeeCap,uint256 automationFeeCap)",
+    "hash": "0x88c1fba7dda3ffd12d58f70b2b14a7d805ffcf83d2beabd55bd2fe330a6f10ba"
+  },
+  "DIGEST_HASHES_TYPEHASH": {
+    "name": "DIGEST_HASHES_TYPEHASH",
+    "preimage": "DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)",
+    "hash": "0x0b5f1f9ee52c2d672eb66a2dd7432dcaf9ba09cd536a70c8001e8a9cb7b6f119"
+  },
+  "EVIDENCE_SOURCE_TYPEHASH": {
+    "name": "EVIDENCE_SOURCE_TYPEHASH",
+    "preimage": "EvidenceSource(bytes32 sourceId,address sourceAddress,uint8 status,uint256 lastUpdateBlock,bytes32 valueHash)",
+    "hash": "0xdba0e637435413fa361eac9297ca392a1c028a0b9eb8d5375d997e2d0f756765"
+  },
+  "EVIDENCE_BUNDLE_TYPEHASH": {
+    "name": "EVIDENCE_BUNDLE_TYPEHASH",
+    "preimage": "ActionEvidence(bytes32 actionId,bytes32 evidenceSetId,address owner,bytes32 market,uint256 blockNumber,uint16 stateBitmap,bytes32 sourcesHash)",
+    "hash": "0xe450951d3f978f72f8174b5f3163bdefe180cf090465e11f4ef5812ff3f20232"
+  },
+  "SPENDER_LIST_TYPEHASH": {
+    "name": "SPENDER_LIST_TYPEHASH",
+    "preimage": "SpenderList(bytes32 sortedTokenSpenderAllowanceHash)",
+    "hash": "0xf62193d13aec3ec72ee07ef0ee09295b3a323637701fa47f16a0203e27866284"
+  },
+  "ALLOWANCE_SCHEDULE_TYPEHASH": {
+    "name": "ALLOWANCE_SCHEDULE_TYPEHASH",
+    "preimage": "AllowanceSchedule(bytes32 sequentialDeltaHash)",
+    "hash": "0x002deced35533c9d1040e6ad69ffc0bf5ed23d91319521d2408b8dad2e64857c"
+  },
+  "FEE_CAP_HASH_TYPEHASH": {
+    "name": "FEE_CAP_HASH_TYPEHASH",
+    "preimage": "FeeCapHash(uint256 flashFeeCap,uint256 protocolFeeCap,uint256 automationFeeCap)",
+    "hash": "0xa316077e03b6cb7cfe1048f9940c6eaff5c8e40ee80f1d29b6788a132aa0a5dc"
+  },
+  "FAILURE_CONDITION_TYPEHASH": {
+    "name": "FAILURE_CONDITION_TYPEHASH",
+    "preimage": "FailureCondition(bytes32 previewOnlyHash)",
+    "hash": "0x4ce0221556229493f31530a25911dc1d081612904e6e4189d6a88dd1f7c038db"
+  },
+  "ARMING_CONTEXT_TYPEHASH": {
+    "name": "ARMING_CONTEXT_TYPEHASH",
+    "preimage": "ArmingContext(uint256 chainId,address executor,bytes4 callbackSelector,uint8 primaryType,address owner,bytes32 market,uint256 registryVersion,address flashProvider,bytes32 routeId,bytes32 quoteHash,uint256 nonceSlot,uint8 nonceBit,uint256 deadline)",
+    "hash": "0x3b02c9a9cfd659b4509f2222870d5e92345f7e710083fe4e21ddb47ae5368a02"
+  },
+  "OPEN_BOUNDS_TYPEHASH": {
+    "name": "OPEN_BOUNDS_TYPEHASH",
+    "preimage": "OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
+    "hash": "0xf4a8770bd919980654184404a437bebdb8ca2ecb00331a500c5c87357760018d"
+  },
+  "REBALANCE_BOUNDS_TYPEHASH": {
+    "name": "REBALANCE_BOUNDS_TYPEHASH",
+    "preimage": "RebalanceBounds(uint16 targetLeverageBps,uint16 targetLeverageToleranceBps,uint256 minPostHealthFactor,uint16 minLiquidationDistanceBps,uint256 maxDebtIncrease,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
+    "hash": "0x6432e35189b576042eaadad5755f566c6d7c5bc8fc5f1fb946af9894ef76a246"
+  },
+  "EXIT_BOUNDS_TYPEHASH": {
+    "name": "EXIT_BOUNDS_TYPEHASH",
+    "preimage": "ExitBounds(uint256 minRepayment,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash,bool repayOnly,bool acceptsThirdPartyRepay)",
+    "hash": "0xe7165695f44b5b28f6ccf706efb98459632a947416c2e9472508a7788c8b86b5"
+  },
+  "FORCE_EXIT_BOUNDS_TYPEHASH": {
+    "name": "FORCE_EXIT_BOUNDS_TYPEHASH",
+    "preimage": "ForceExitBounds(uint256 minRepayment,uint256 maxCollateralSold,uint16 looseSlippageBps,uint256 looseFlashFeeCap,uint16 maxCurvePositionShareBps,uint8 acknowledgedRisks)",
+    "hash": "0x02f9a27af8a23b9a25777416a80126184f4f7860294bad898660dc165b462409"
+  },
+  "REVOKE_BOUNDS_TYPEHASH": {
+    "name": "REVOKE_BOUNDS_TYPEHASH",
+    "preimage": "RevokeBounds(uint64 policyId,uint8 policyClass,uint256 effectiveBlock)",
+    "hash": "0xc32436bf46e8d08929a21e1817c6ffed64ee1060512e4e237a1dbbe95f8b67d9"
+  },
+  "AUTOMATION_BOUNDS_TYPEHASH": {
+    "name": "AUTOMATION_BOUNDS_TYPEHASH",
+    "preimage": "AutomationBounds(bytes32 triggerConditionHash,uint8 underlyingPrimaryType,bytes32 underlyingActionHash,bytes32 policyHash,bytes32 boundSubsetHash,uint256 notBeforeBlock,uint256 notAfterBlock)",
+    "hash": "0xe937c18ccb6e6f998ffdbb90a380eafd46e05c4a47840a5c4f3a64a15f4f266b"
+  },
+  "OPEN_TYPEHASH": {
+    "name": "OPEN_TYPEHASH",
+    "preimage": "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)",
+    "hash": "0x2bf326ec023d5505d6e268c1f605a44c399dadaeab0076ba7bd48261d09d3cfc"
+  },
+  "REBALANCE_TYPEHASH": {
+    "name": "REBALANCE_TYPEHASH",
+    "preimage": "Rebalance(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,RebalanceBounds bounds,DigestHashes hashes)",
+    "hash": "0xf256414d319bebda5c008b5d2f67aa2e09fa6c688278eecd676dfccece1c7709"
+  },
+  "EXIT_TYPEHASH": {
+    "name": "EXIT_TYPEHASH",
+    "preimage": "Exit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ExitBounds bounds,DigestHashes hashes)",
+    "hash": "0xccac07a147f55c08855564121c8ccdc3b1352f8347f63bc95cf4ba0de2dab231"
+  },
+  "FORCE_EXIT_TYPEHASH": {
+    "name": "FORCE_EXIT_TYPEHASH",
+    "preimage": "ForceExit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ForceExitBounds bounds,DigestHashes hashes)",
+    "hash": "0x04ba9640cab2caceb652e1928cd497f46de1a59d89a11c39185825b1f8b34de1"
+  },
+  "REVOKE_TYPEHASH": {
+    "name": "REVOKE_TYPEHASH",
+    "preimage": "Revoke(ActionIdentity identity,Freshness freshness,uint8 executionKind,RevokeBounds bounds,DigestHashes hashes)",
+    "hash": "0x272281406c23225b34295b159d27a50245e0ada5850e679be7ea030def11f28c"
+  },
+  "AUTOMATION_EXEC_TYPEHASH": {
+    "name": "AUTOMATION_EXEC_TYPEHASH",
+    "preimage": "AutomationExec(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,AutomationBounds bounds,DigestHashes hashes)",
+    "hash": "0xc3cc6b85e7d0810b5df24ab654f52071104c552393b0e8fddd73713fa8248033"
+  },
+  "PREIMAGE_PROOF_TYPEHASH": {
+    "name": "PREIMAGE_PROOF_TYPEHASH",
+    "preimage": "Eip1271PreimageDisplayProof(address owner,uint8 primaryType,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,uint8 acknowledgedRisks,uint8 policyClass,bytes32 market,uint256 registryVersion,uint248 nonceSlot,uint8 nonceBit,uint256 maxCollateralSold,uint256 maxDebtIncrease,uint256 deadline,address verifyingContract)",
+    "hash": "0xec920e6eeadf896e41868a1db4d4d57cdf529b452b8149386d38231f320e5f39"
+  }
+}

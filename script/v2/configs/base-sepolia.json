@@ -1,0 +1,40 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "governanceMultisig": "0x1000000000000000000000000000000000000001",
+  "initialGuardian": "0x1000000000000000000000000000000000000002",
+  "anchorSubmitter": "0x1000000000000000000000000000000000000003",
+  "indexerSigningKey": "0x1000000000000000000000000000000000000004",
+  "protocolFeeReceiver": "0x1000000000000000000000000000000000000005",
+  "automationFeeReceiver": "0x1000000000000000000000000000000000000006",
+  "morpho": "0x2000000000000000000000000000000000000001",
+  "uniswapV3Factory": "0x2000000000000000000000000000000000000002",
+  "baseSequencerFeed": "0x2000000000000000000000000000000000000003",
+  "bloxrouteProtectEndpoint": "https://api.blxrbdn.com",
+  "sequencerFallback": "https://sepolia-sequencer.base.org",
+  "markets": [
+    {
+      "id": "0x0100000000000000000000000000000000000000000000000000000000000001",
+      "loanToken": "0x3000000000000000000000000000000000000001",
+      "collateralToken": "0x3000000000000000000000000000000000000002",
+      "oracle": "0x3000000000000000000000000000000000000003",
+      "irm": "0x3000000000000000000000000000000000000004",
+      "lltv": 860000000000000000,
+      "curvePool": "0x3000000000000000000000000000000000000005",
+      "wstDiemVault": "0x3000000000000000000000000000000000000006",
+      "uniswapV3FlashPool": "0x3000000000000000000000000000000000000007",
+      "uniswapV3FlashFeeTier": 500,
+      "chainlinkFeed": "0x3000000000000000000000000000000000000008"
+    }
+  ],
+  "fingerprintToleranceBps": {
+    "curveLiquidity": 1000,
+    "curveBalances": 500,
+    "vaultNav": 50
+  },
+  "anchorCadenceBlocks": 100,
+  "harvestCoolingBlocks": 30,
+  "forceExitMaxDeadlineSeconds": 86400,
+  "attemptThrottleWindowBlocks": 60,
+  "maxFailedAttemptsPerWindow": 5
+}
