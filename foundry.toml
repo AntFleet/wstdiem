@@ -1,0 +1,14 @@
+[profile.default]
+src = "contracts"
+test = "test/foundry"
+out = "out"
+cache_path = "cache"
+solc_version = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+fs_permissions = [
+  { access = "read", path = "./test/foundry/v2/snapshots/" },
+  { access = "read", path = "./test/foundry/v2/fork/" },
+  { access = "write", path = "./test/foundry/v2/fork/" }
+]

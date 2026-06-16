@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+cache/
+out/
+lib/openzeppelin-contracts/lib/
+.omc/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+indexer/data/
+anchor/data/
+.env

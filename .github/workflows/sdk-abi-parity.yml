@@ -1,0 +1,46 @@
+name: SDK ABI Parity Check
+
+on:
+  push:
+    paths:
+      - "sdk/**"
+      - "contracts/v2/**"
+      - ".github/workflows/sdk-abi-parity.yml"
+  pull_request:
+    paths:
+      - "sdk/**"
+      - "contracts/v2/**"
+      - ".github/workflows/sdk-abi-parity.yml"
+
+jobs:
+  abi-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install workspace deps
+        run: npm install --no-audit --no-fund
+      - name: Run SDK ABI parity tests (A6-4)
+        run: |
+          cd sdk
+          ../node_modules/.bin/vitest run test/abi-parity.test.ts
+      - name: Run SDK TypeScript check
+        run: |
+          cd sdk
+          ../node_modules/.bin/tsc --noEmit
+      - name: Run full SDK test suite
+        run: |
+          cd sdk
+          ../node_modules/.bin/vitest run
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Build contracts with forge (for SDK ABI artifact diff)
+        run: forge build
+      - name: PR-15 forge artifact ABI parity diff
+        run: |
+          cd sdk
+          node scripts/extract-forge-abis.mjs ../out

@@ -1,0 +1,19 @@
+{
+  "filter_paths": "lib/|test/|script/|node_modules/",
+  "exclude_informational": false,
+  "exclude_low": false,
+  "exclude_medium": false,
+  "exclude_high": false,
+  "exclude_optimization": true,
+  "solc_remaps": [
+    "forge-std/=lib/forge-std/src/",
+    "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+    "morpho-blue/=lib/morpho-blue/src/"
+  ],
+  "exclude": [
+    "naming-convention",
+    "external-function",
+    "assembly",
+    "low-level-calls"
+  ]
+}

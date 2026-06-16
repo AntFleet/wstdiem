@@ -1,0 +1,102 @@
+name: forge
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: forge --version
+        run: |
+          forge --version
+          cast --version
+
+      - name: forge build
+        run: forge build --sizes 2>&1 | tee sizes.log
+
+      - name: Upload sizes artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-sizes
+          path: sizes.log
+
+      - name: forge test (non-fork)
+        run: forge test --no-match-path "test/foundry/v2/fork/*" -vv
+
+  fork:
+    name: fork tests (Base mainnet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ secrets.BASE_RPC_URL != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: forge test (fork)
+        run: forge test --match-path "test/foundry/v2/fork/*" -vv
+        env:
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+
+  slither:
+    name: slither static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Foundry (slither needs forge to resolve remappings)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install slither
+        run: pip install slither-analyzer==0.10.4
+
+      - name: Run slither
+        run: |
+          slither . --config-file slither.config.json --json slither-report.json 2>&1 | tee slither.log
+        continue-on-error: true
+
+      - name: Upload slither artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slither-output
+          path: |
+            slither.log
+            slither-report.json

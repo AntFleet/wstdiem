@@ -1,0 +1,28 @@
+{
+  "name": "@antfleet/wstdiem-protocol",
+  "version": "0.1.0-rc1",
+  "description": "wstDIEM Protocol v6 — leveraged loop primitives on Base.",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "indexer",
+    "anchor",
+    "sdk",
+    "app"
+  ],
+  "scripts": {
+    "build:contracts": "forge build",
+    "test:contracts": "forge test --no-match-path 'test/foundry/*Fork.t.sol'",
+    "test:contracts:fork": "node -e \"if (!process.env.BASE_RPC_URL) { console.error('BASE_RPC_URL is required'); process.exit(1); }\" && forge test --match-path 'test/foundry/*Fork.t.sol'",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AntFleet/wstdiem.git"
+  },
+  "license": "BUSL-1.1"
+}
