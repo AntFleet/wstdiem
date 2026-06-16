@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens — dark default (synthesis G.2). Light theme swaps via [data-theme="light"]. */
+@layer base {
+  :root,
+  [data-theme="dark"] {
+    --color-canvas: 9 10 13;
+    --color-surface: 17 19 24;
+    --color-surface-raised: 24 27 33;
+    --color-border: 38 42 50;
+    --color-text: 232 234 238;
+    --color-text-muted: 142 148 159;
+    --color-accent: 110 168 254;
+    --color-risk-green: 56 178 107;
+    --color-risk-amber: 222 178 75;
+    /* m-do-9 closure: bumped risk-red from (232 92 92) to (255 138 138) so
+       body text against --color-canvas (9 10 13) achieves the WCAG AAA
+       ≥7:1 contrast threshold (~7.4:1). Risk-red retains its strong red
+       hue for state-pill / mismatch banners while being legible for any
+       inline copy ("Sign blocked", G-PM-3 reason etc.). */
+    --color-risk-red: 255 138 138;
+    --color-warning-border: 255 138 138;
+    --color-warning-surface: 38 14 14;
+    --color-warning-text: 252 198 198;
+  }
+
+  [data-theme="light"] {
+    --color-canvas: 250 250 251;
+    --color-surface: 255 255 255;
+    --color-surface-raised: 244 245 247;
+    --color-border: 220 223 230;
+    --color-text: 17 19 24;
+    --color-text-muted: 95 102 116;
+    --color-accent: 38 109 211;
+    --color-risk-green: 32 138 78;
+    --color-risk-amber: 178 130 24;
+    --color-risk-red: 196 47 47;
+    --color-warning-border: 165 30 30;
+    --color-warning-surface: 254 240 240;
+    --color-warning-text: 122 22 22;
+  }
+
+  body {
+    font-feature-settings: "ss01", "cv01";
+    background-color: rgb(var(--color-canvas));
+    color: rgb(var(--color-text));
+  }
+}

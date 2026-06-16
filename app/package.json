@@ -1,0 +1,54 @@
+{
+  "name": "@wstdiem/app",
+  "version": "0.1.0",
+  "description": "wstDIEM v0.1.0-rc1 public web app — evidence-backed loop cockpit. Consumes @wstdiem/sdk for all reads, all builds, all signing flows.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts,.tsx",
+    "playwright": "playwright test",
+    "playwright:install": "playwright install --with-deps chromium",
+    "screenshots": "playwright test --grep @screenshot --update-snapshots",
+    "abi-parity": "node scripts/check-abi-parity.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "@visx/visx": "^3.12.0",
+    "@wstdiem/sdk": "*",
+    "connectkit": "^1.9.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.13.0",
+    "viem": "^2.29.0",
+    "wagmi": "^2.14.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.15.3",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.16.0",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.8.3",
+    "vite": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
