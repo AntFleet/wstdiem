@@ -39,28 +39,31 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
   *Files:* `app/src/screens/LoopBuilder.tsx`, `app/src/hooks/useBuild.ts`, e2e specs.
 - [ ] **T3. App: wire rebalance / exit / force-exit sign paths.** Same pattern in
   `Positions.tsx` (`onAction`, `onForceExitSign` are `console.warn`).
-- [ ] **T4. App: wire automation-policy create** (`Automation.tsx onSignPolicy`).
-  Depends on T7 if execution is in scope; policy *creation* signing can land first.
+- [~] **T2a. SDK envelope-derivation helper (keystone).** `quoteOpen`/`quoteRebalance`/
+  `quoteExit` require a fully-assembled envelope (registryVersion, merkleRoot,
+  verifyingContract, executor, nonce, quoteBlockNumber, evidenceBundleHash, bounds). Add a
+  helper that derives it from `(Market, owner, amount, leverageBps, mev, policy defaults)`
+  so screens don't hand-assemble it. Unit-testable now against mocks.
+- [ ] **T2b. App: wire open/increase** in `LoopBuilder.tsx` to T2a → `usePreview` →
+  `signAndAttachAction`. Replace the `proposedAction = undefined` stub + `console.warn` sign.
+- [ ] **T3. App: wire rebalance / exit / force-exit** sign paths in `Positions.tsx`.
+- [ ] ~~T4. Automation-policy create~~ — **deferred (manual-only beta).**
 
-### P1 — makes a beta *deployable*
+### P1 — makes a beta *deployable* (deploy mocks)
 
-- [ ] 🔒 **T5. Source real Base Sepolia addresses.** Populate
-  `script/v2/configs/base-sepolia.json` + the three service `.env.example` files with
-  real Morpho / Uniswap V3 / Curve / Chainlink / wstDIEM-vault / market addresses (or
-  deploy mocks). **Needs external input** — see "Decisions needed".
-- [ ] **T6. Deploy to Base Sepolia + publish manifest.** Run `script/v2/Deploy.s.sol`
-  against T5 config; capture deployed addresses into a committed manifest; point app +
-  services env at them. Blocked by T5.
+- [ ] **T5. Mock external-protocol contracts.** Author `contracts/v2/mocks/` (or `test`
+  mirror promoted to a deployable): mock Morpho market, mock ERC-4626 wstDIEM vault, mock
+  Curve pool, mock Uniswap V3 flash pool, mock Chainlink price + sequencer feeds. Reuse
+  existing fork-test mock patterns (`test/foundry/v2/fork/helpers/`).
+- [ ] **T6. Sepolia deploy prep + local smoke.** Populate `base-sepolia.json` with the
+  mock addresses (deployed by an extended `Deploy.s.sol` mock-bootstrap step); add a
+  Foundry test that deploys the full system against the mocks on a local chain and opens a
+  loop end-to-end. Actual Sepolia broadcast (funded key + RPC) handed off. 🔒 broadcast only
 
-### P2 — feature-complete for keeper beta (optional for first beta)
+### P2 — DEFERRED out of first beta (do not implement now)
 
-- [ ] **T7. SDK automation actions.** Implement `proposeAutomationAction` /
-  `executeAutomationProposal` (currently throw "landing in PR-13");
-  real `AutomationExec` bounds (not zero placeholders); indexer `AutomationExecuted`
-  handler.
-- [ ] **T8. On-chain fee routing.** Wire `LoopFeeRouter.routeFee` into the executor
-  path (§9) or explicitly scope fees out of beta. Pull-style + `FeePayoutFailed` +
-  `acceptsFees` semantics per spec.
+- [ ] ~~T7. SDK automation actions~~ — deferred (see Decisions).
+- [ ] ~~T8. On-chain fee routing~~ — deferred (see Decisions).
 
 ### P3 — quality gate before public beta
 
@@ -70,13 +73,24 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
 
 ---
 
-## Decisions needed (external input)
+## Decisions (settled 2026-07-12)
 
-1. **T5 addresses:** Are there existing Base Sepolia deployments of Morpho + a wstDIEM
-   vault + a Curve pool to point at, or do we deploy mock protocols? This gates all of P1.
-2. **Fee model in beta (T8):** charge fees on testnet, or explicitly scope out?
-3. **Automation in beta (T7):** is keeper/automation in scope for the *first* beta, or
-   manual actions only?
+1. **Beta scope = MANUAL ACTIONS ONLY.** Open / increase / rebalance / exit / force-exit,
+   user-signed. **T7 automation and T8 fee routing are explicitly deferred out of the
+   first beta.** (Force-exit `acknowledgedRisks` path stays in.)
+2. **External protocol deps = DEPLOY MOCKS.** No real Base Sepolia Morpho / vault / Curve /
+   Chainlink to point at → we ship mock Morpho market, mock wstDIEM ERC-4626 vault, mock
+   Curve pool, mock Uniswap V3 flash pool, and mock Chainlink feeds, and pin them in
+   `base-sepolia.json`. T5 is now "author + wire mock protocol contracts."
+3. **Sequencing = BOTH.** Track A (SDK envelope helper + app wiring, mock-tested) proceeds
+   in parallel with Track B (mock contracts + Sepolia deploy). Actual on-chain Sepolia
+   broadcast needs a funded deployer key + RPC (external) — everything up to the broadcast
+   is prepared and forge-verified locally.
+
+### Deferred (post-first-beta), do NOT implement now
+- T7 SDK automation actions (`proposeAutomationAction` / `executeAutomationProposal`) + indexer `AutomationExecuted`.
+- T8 on-chain fee routing (`LoopFeeRouter.routeFee` wiring).
+The app's Automation *create* screen (T4) is therefore also out of first-beta scope.
 
 ---
 
@@ -85,3 +99,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
 - 2026-07-12: Runbook created.
 - 2026-07-12: T1 done — indexer response signing + Fastify-5 `loggerInstance` fix. All
   workspaces green (indexer 13, anchor 8, sdk 292, app 111).
+- 2026-07-12: Decisions settled (manual-only beta; deploy mocks; both tracks). Confirmed
+  the SDK already exposes every reader the envelope helper needs (registry version/root,
+  authorization nonce bitmap, block number, resolveEvidence) → T2a is compose-not-rebuild.
+- 2026-07-12: Started Track A (T2a SDK envelope helper + T2b/T3 app wiring) and Track B
+  (T5 mock external-protocol contracts + T6 local deploy smoke) in parallel.
