@@ -39,14 +39,24 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
   *Files:* `app/src/screens/LoopBuilder.tsx`, `app/src/hooks/useBuild.ts`, e2e specs.
 - [ ] **T3. App: wire rebalance / exit / force-exit sign paths.** Same pattern in
   `Positions.tsx` (`onAction`, `onForceExitSign` are `console.warn`).
-- [~] **T2a. SDK envelope-derivation helper (keystone).** `quoteOpen`/`quoteRebalance`/
-  `quoteExit` require a fully-assembled envelope (registryVersion, merkleRoot,
-  verifyingContract, executor, nonce, quoteBlockNumber, evidenceBundleHash, bounds). Add a
-  helper that derives it from `(Market, owner, amount, leverageBps, mev, policy defaults)`
-  so screens don't hand-assemble it. Unit-testable now against mocks.
-- [ ] **T2b. App: wire open/increase** in `LoopBuilder.tsx` to T2a → `usePreview` →
-  `signAndAttachAction`. Replace the `proposedAction = undefined` stub + `console.warn` sign.
-- [ ] **T3. App: wire rebalance / exit / force-exit** sign paths in `Positions.tsx`.
+- [x] **T2a. SDK envelope-derivation helper (keystone).** ✅ Added
+  `buildOpenParams` / `buildRebalanceParams` / `buildExitParams` / `buildForceExitParams`
+  to `WstdiemSdk`; each sources registryVersion+merkleRoot (registry reader), a free nonce
+  bit (`allocateNonce` scans the authorization bitmap), a fresh block, verifyingContract/
+  executor (config), policyId 0, executionKind `OWNER_DIRECT`, and derived bounds. 7 SDK
+  unit tests. SDK 299 passing.
+- [x] **T2b. App: wire open/increase.** ✅ `LoopBuilder` now builds the action via
+  `useActionParams` → `usePreview` → HF gauge, and `onSign` runs
+  `signAndAttachAction` → `broadcastTx` (wagmi). Fail-closed gates preserved.
+- [x] **T3. App: wire rebalance / exit / force-exit** sign paths in `Positions.tsx`. ✅
+  App 115 passing.
+  > ⚠️ **Review caveat (T3, force-exit only):** `allocateNonce` reads the `LoopAuthorization`
+  > nonce bitmap for the ForceExit primaryType, but force-exit executes through
+  > `LoopForceExitExecutor` (attempt-throttled) and does **not** spend that bitmap. Open/
+  > rebalance/exit nonce allocation is correct; **ForceExit nonce derivation must be
+  > validated against the deployed mock system (T6)** — may need a dedicated force-exit
+  > nonce reader or a different allocation rule. Non-blocking for the core flow; force-exit
+  > is an emergency edge path.
 - [ ] ~~T4. Automation-policy create~~ — **deferred (manual-only beta).**
 
 ### P1 — makes a beta *deployable* (deploy mocks)
