@@ -28,9 +28,9 @@
     "LoopRebalancedV2(bytes32,address,bytes32,int256,int256,uint256)": "0xae868bf699e94e8cd3a8498d891ed9b5c958ef11a769a9cf81ead67aa8dd732a",
     "LoopExitedV2(bytes32,address,bytes32,uint256,uint256,uint256)": "0x0286c768b72a4ed0d9d83d1a4e1446f79c96e534381d985615a16744707c2903",
     "LoopForceExitedV2(bytes32,address,bytes32,uint256,uint256,uint8)": "0xf463bafeee4dca8787b9fc2689ef7f0f9bef3fbb1d00389c26fe35937fc00155",
-    "PolicyCreated(address,uint64,uint8,bytes32,uint64)": "0xecf54a3f52643469e8b6581365c88cb61617a0f589c77029da9a5723e0203b79",
-    "PolicyUpdated(address,uint64,bytes32,bytes32,uint64)": "0x7498984d09fbd9157dd0cebe6d53cef6f149bd5aa8e3da2c0ac3c47ccaedb1d2",
-    "PolicyRevoking(address,uint64,uint64)": "0x2b4d82939bd38a87aab409f7cdd1df75f1d3ec472226fb5885455c1c76a2962d",
+    "PolicyCreated(address,uint64,uint8,bytes32,uint256)": "0xaf44faf1e99d076d716f9b9de2fd11ec67df9415c676373e804157f52c3213f9",
+    "PolicyUpdated(address,uint64,bytes32,bytes32,uint256)": "0x816aed24a5dba502aca9169a8474557140e215a1765dab8501b9e2dafa526f56",
+    "PolicyRevoking(address,uint64,uint256)": "0xf46035788ad52c28c4a24afad0009c4970fcb9f7269018010b50065b661966aa",
     "AutomationExecuted(uint64,bytes32,address)": "0x9423b35c55f0c0658649d628fe975c8e310069d26016885364623dda773c67c5",
     "AutomationFailed(uint64,bytes32,address,bytes4)": "0x9e19c5b113b167ffe620a72c77b840117e361f78278d4a77404995b77851c5d1",
     "StateSnapshotAccepted(uint256,bytes32,address)": "0xedd3378d4d02b547a89c8c4c39bda67cf4d9f5d4136960921af39eaa2207a70e"

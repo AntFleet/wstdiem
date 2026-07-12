@@ -139,6 +139,13 @@ The app's Automation *create* screen (T4) is therefore also out of first-beta sc
   `minWstDiemReceived` now derived from live `vault.convertToShares(borrow)` instead of the
   1:1 DIEM→wstDIEM shortcut. SDK 299 (both fixes tested), app 115, typecheck clean.
 
+- 2026-07-12: CI (`abi-parity`) went red on a **pre-existing** drift (identical to `main`):
+  SDK decoded `Policy{Created,Updated,Revoking}` block fields as `uint64` while the contract
+  emits `uint256` (the indexer decoder was already `uint256` = source of truth). Fixed the
+  SDK ABI + snapshot to `uint256`; corrected one decode-test fixture. All suites green + both
+  forge-artifact parity scripts pass. This was a latent SDK/contract ABI mismatch, not
+  introduced by this branch.
+
 ### Review flags status
 1. ForceExit nonce — ✅ closed.
 2. Bounds heuristics — 🟡 partially closed: the 1:1 vault shortcut is fixed
