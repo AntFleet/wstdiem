@@ -5,7 +5,10 @@
 // (LoopBuilder / Positions / Automation) routes through here so the SDK's
 // digest-assembly + attachSignature contract is the single audited path.
 
-import { signTypedData as wagmiSignTypedData } from "wagmi/actions";
+import {
+  sendTransaction as wagmiSendTransaction,
+  signTypedData as wagmiSignTypedData,
+} from "wagmi/actions";
 import type {
   Action,
   ActionDigest,
@@ -41,4 +44,15 @@ export async function signAndAttachAction(
     ...(built.typedData as object),
   } as Parameters<typeof wagmiSignTypedData>[1])) as Hex;
   return args.sdk.attachSignature(args.action, signature, built.digest);
+}
+
+/** Broadcast a signed action's calldata via the connected wallet. Kept inside
+ * `app/src/wallet/` so `wagmi/actions` stays the single audited transaction
+ * surface. Returns the broadcast transaction hash. */
+export async function broadcastTx(tx: SignAndAttachResult): Promise<Hex> {
+  return (await wagmiSendTransaction(wagmiConfig, {
+    to: tx.to,
+    data: tx.data,
+    value: tx.value,
+  })) as Hex;
 }

@@ -9,5 +9,5 @@ export {
   useConnectedChainId,
   useChainSwitch,
 } from "./hooks.js";
-export { signAndAttachAction } from "./sign.js";
+export { signAndAttachAction, broadcastTx } from "./sign.js";
 export type { SignAndAttachResult } from "./sign.js";
