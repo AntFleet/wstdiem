@@ -4,17 +4,20 @@ Status of record for taking `0.1.0-rc1` from "primitives complete" to a usable
 **Base Sepolia beta**. Derived from a full implementation audit (contracts, SDK,
 indexer, anchor, app) on 2026-07-12.
 
-## Readiness summary
+## Readiness summary (updated 2026-07-12 after Tracks A + B)
 
-| Layer | Build | Core path | Blocker to beta |
+| Layer | Build | Core path | Remaining to beta |
 |---|---|---|---|
-| Contracts | ✅ green (264 fns, fork tests) | ✅ open/rebalance/exit/force-exit + all on-chain gates | Fee routing not wired; placeholder deploy config |
-| SDK | ✅ 292 tests | ✅ read/quote/preview/sign-attach | Automation methods throw (PR-13); indexer sig verify-only |
-| Indexer | ✅ 8 tests | ✅ ingest/decode/read-API | **Never signs responses** (no key) |
-| Anchor | ✅ 8 tests | ✅ manifest/cadence/submit | Manifest = MVP subset |
-| App | ✅ 111 tests | ❌ **open-loop action stubbed** | Sign paths are `console.warn`; zero-addr config |
+| Contracts | ✅ 215 forge tests (+mock E2E open/exit) | ✅ open/rebalance/exit/force-exit + all on-chain gates | Fee routing deferred (out of scope) |
+| SDK | ✅ 299 tests | ✅ read/quote/preview/sign-attach **+ `build*Params`** | Automation deferred (out of scope) |
+| Indexer | ✅ 13 tests | ✅ ingest/decode/read-API **+ signed responses** | — |
+| Anchor | ✅ 8 tests | ✅ manifest/cadence/submit | Manifest = MVP subset (acceptable for beta) |
+| App | ✅ 115 tests | ✅ **open/rebalance/exit/force-exit wired** (build→preview→sign→broadcast) | Live e2e vs deployment; ForceExit nonce caveat |
 
-**Overall: NOT launch-ready.** A user cannot open a loop end-to-end today.
+**Overall: functionally beta-ready pending a Sepolia broadcast + live e2e pass.** The
+open-loop path is wired end-to-end and proven against mock protocols locally; what remains
+is the on-chain broadcast (needs your key/RPC), pointing envs at deployed addresses, and a
+Playwright e2e pass against the live deployment.
 
 ---
 
@@ -61,14 +64,29 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
 
 ### P1 — makes a beta *deployable* (deploy mocks)
 
-- [ ] **T5. Mock external-protocol contracts.** Author `contracts/v2/mocks/` (or `test`
-  mirror promoted to a deployable): mock Morpho market, mock ERC-4626 wstDIEM vault, mock
-  Curve pool, mock Uniswap V3 flash pool, mock Chainlink price + sequencer feeds. Reuse
-  existing fork-test mock patterns (`test/foundry/v2/fork/helpers/`).
-- [ ] **T6. Sepolia deploy prep + local smoke.** Populate `base-sepolia.json` with the
-  mock addresses (deployed by an extended `Deploy.s.sol` mock-bootstrap step); add a
-  Foundry test that deploys the full system against the mocks on a local chain and opens a
-  loop end-to-end. Actual Sepolia broadcast (funded key + RPC) handed off. 🔒 broadcast only
+- [x] **T5. Mock external-protocol contracts.** ✅ `contracts/v2/mocks/` — MockERC20,
+  MockMorpho(+oracle), MockWstDiemVault (ERC-4626), MockCurvePool, MockUniswapV3 flash
+  pool+factory, MockChainlinkFeed + MockSequencerFeed — faithful to the exact interface
+  signatures the executor/adapter/registry call. No core contract changed.
+- [x] **T6. Sepolia deploy prep + local smoke.** ✅ `script/v2/DeployMocks.s.sol` +
+  `MockDeploymentKit.sol` deploy the mocks + full system and bootstrap all six registry
+  fingerprints (queue → timelock → apply). `test/foundry/v2/MockDeploymentE2E.t.sol`
+  deploys everything on the local EVM and exercises **open** and **open→exit** end-to-end
+  (3 tests pass). `base-sepolia.json` documents the mock path with `FILLED_AT_DEPLOY_TIME`
+  markers. **Actual Sepolia broadcast still 🔒** — needs funded deployer key + RPC; see
+  hand-off below.
+
+### 🔒 Sepolia broadcast hand-off (needs you)
+
+1. Provide a funded Base Sepolia deployer key + RPC (`WSTDIEM_MOCK_DEPLOYER`,
+   `WSTDIEM_MOCK_GOVERNANCE`, RPC URL).
+2. On a live chain the fingerprint **apply** is a *second* tx after the 130k-block timelock
+   (the local E2E fast-forwards with `vm.roll`; a real deploy cannot). `DeployMocks.s.sol`
+   documents the split.
+3. Populate `base-sepolia.json` + app `VITE_CONTRACT_*` + service `.env` from the
+   `DeployMocks` console output.
+4. `transferOwnership` of the registry to the governance multisig after the apply.
+5. Re-validate the **ForceExit nonce caveat** (T3) against the live deployment.
 
 ### P2 — DEFERRED out of first beta (do not implement now)
 
@@ -114,3 +132,7 @@ The app's Automation *create* screen (T4) is therefore also out of first-beta sc
   authorization nonce bitmap, block number, resolveEvidence) → T2a is compose-not-rebuild.
 - 2026-07-12: Started Track A (T2a SDK envelope helper + T2b/T3 app wiring) and Track B
   (T5 mock external-protocol contracts + T6 local deploy smoke) in parallel.
+- 2026-07-12: Track A done — build*Params + app wiring (SDK 299, app 115). Track B done —
+  mock protocols + DeployMocks + MockDeploymentE2E (contracts 215, incl. open+exit E2E).
+  Independently re-verified all suites green. Remaining: 🔒 Sepolia broadcast + live e2e +
+  ForceExit nonce re-check.
