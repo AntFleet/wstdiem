@@ -4,6 +4,10 @@ const hexAddress = z
   .string()
   .regex(/^0x[a-fA-F0-9]{40}$/, "Expected 0x-prefixed 20-byte address");
 
+const hexPrivateKey = z
+  .string()
+  .regex(/^0x[a-fA-F0-9]{64}$/, "Expected 0x-prefixed 32-byte private key");
+
 export const IndexerConfigSchema = z.object({
   chainId: z.coerce.number().int().positive(),
   rpcUrl: z.string().url(),
@@ -15,6 +19,12 @@ export const IndexerConfigSchema = z.object({
   databasePath: z.string().default("./data/indexer.db"),
   apiPort: z.coerce.number().int().positive().default(8080),
   apiHost: z.string().default("127.0.0.1"),
+  // Optional signing key for the read API. When set, every GET response is
+  // signed (EIP-191) and served with an `X-Indexer-Signature` header; the
+  // recovered signer must equal the registry-pinned `indexerSigner` role.
+  // When unset the API serves unsigned responses (backwards compatible with
+  // SDK clients that have no `signingKey` configured).
+  signingKey: hexPrivateKey.optional(),
   contracts: z.object({
     registry: hexAddress,
     authorization: hexAddress,
@@ -45,6 +55,7 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Indexer
     databasePath: env.WSTDIEM_DB_PATH,
     apiPort: env.WSTDIEM_API_PORT,
     apiHost: env.WSTDIEM_API_HOST,
+    signingKey: env.WSTDIEM_INDEXER_SIGNING_KEY || undefined,
     logLevel: env.WSTDIEM_LOG_LEVEL,
     contracts: {
       registry: env.WSTDIEM_REGISTRY_ADDRESS,

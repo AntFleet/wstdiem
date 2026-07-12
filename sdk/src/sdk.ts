@@ -18,11 +18,19 @@ import type {
   Action,
   Market,
   CommonActionEnvelope,
+  OpenAction,
+  RebalanceAction,
+  ExitAction,
+  ForceExitAction,
   OpenBounds,
   RebalanceBounds,
   ExitBounds,
   ForceExitBounds,
   ExitRouteKind,
+  BuildOpenParamsInput,
+  BuildRebalanceParamsInput,
+  BuildExitParamsInput,
+  BuildForceExitParamsInput,
 } from "./types/action.js";
 import type { ActionEvidence } from "./types/evidence.js";
 import type {
@@ -77,6 +85,22 @@ export interface WstdiemSdk {
     primaryType?: PrimaryType,
   ): Promise<ActionEvidence>;
   getPositionRisk(market: MarketId, owner: Address): Promise<PositionRisk>;
+
+  // Envelope derivation (T2a): turn friendly inputs (amount, leverage, MEV
+  // mode) into a fully-assembled action envelope ready for quoteX /
+  // previewTransaction. Sources registryVersion + merkleRoot (registry
+  // reader), an unused nonce slot/bit (authorization reader), a fresh
+  // quoteBlockNumber (readClient), verifyingContract + executor (config), and
+  // evidenceBundleHash (same resolveEvidence path the digest assembly uses).
+  // policyId = 0 and executionKind = OWNER_DIRECT (user-signed manual).
+  buildOpenParams(input: BuildOpenParamsInput): Promise<OpenAction>;
+  buildRebalanceParams(
+    input: BuildRebalanceParamsInput,
+  ): Promise<RebalanceAction>;
+  buildExitParams(input: BuildExitParamsInput): Promise<ExitAction>;
+  buildForceExitParams(
+    input: BuildForceExitParamsInput,
+  ): Promise<ForceExitAction>;
 
   // Action quoting (returns a complete TransactionPreview ready to sign)
   quoteOpen(

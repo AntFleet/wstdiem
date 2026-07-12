@@ -426,14 +426,14 @@ describe("PR-13: decodeLoopEvent expanded ABI", () => {
             { name: "policyId", type: "uint64", indexed: true },
             { name: "primaryType", type: "uint8", indexed: true },
             { name: "policyHash", type: "bytes32", indexed: false },
-            { name: "expiryBlock", type: "uint64", indexed: false },
+            { name: "expiryBlock", type: "uint256", indexed: false },
           ],
         },
       ] as const,
       args: { owner: OWNER, policyId: 7n, primaryType: 0 },
     });
     const data = encodeAbiParameters(
-      [{ type: "bytes32" }, { type: "uint64" }],
+      [{ type: "bytes32" }, { type: "uint256" }],
       [("0x" + "ab".repeat(32)) as `0x${string}`, 999_999n],
     );
     const decoded = await sdk.decodeLoopEvent({

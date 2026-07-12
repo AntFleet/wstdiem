@@ -624,7 +624,7 @@ export const LOOP_EVENTS_FULL_ABI = [
       { name: "policyId", type: "uint64", indexed: true },
       { name: "primaryType", type: "uint8", indexed: true },
       { name: "policyHash", type: "bytes32", indexed: false },
-      { name: "expiryBlock", type: "uint64", indexed: false },
+      { name: "expiryBlock", type: "uint256", indexed: false },
     ],
   },
   {
@@ -635,7 +635,7 @@ export const LOOP_EVENTS_FULL_ABI = [
       { name: "policyId", type: "uint64", indexed: true },
       { name: "oldPolicyHash", type: "bytes32", indexed: false },
       { name: "newPolicyHash", type: "bytes32", indexed: false },
-      { name: "expiryBlock", type: "uint64", indexed: false },
+      { name: "expiryBlock", type: "uint256", indexed: false },
     ],
   },
   {
@@ -644,7 +644,7 @@ export const LOOP_EVENTS_FULL_ABI = [
     inputs: [
       { name: "owner", type: "address", indexed: true },
       { name: "policyId", type: "uint64", indexed: true },
-      { name: "revocationBlock", type: "uint64", indexed: false },
+      { name: "revocationBlock", type: "uint256", indexed: false },
     ],
   },
   {

@@ -1,6 +1,7 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyBaseLogger } from "fastify";
 import cors from "@fastify/cors";
 import type { Logger } from "pino";
+import { privateKeyToAccount } from "viem/accounts";
 import type { DB } from "../db/client.js";
 import type { IndexerConfig } from "../config.js";
 import type { Hex } from "viem";
@@ -37,14 +38,38 @@ export function buildApi(args: {
 }): ApiServer {
   const { config, db, logger } = args;
   const fastify = Fastify({
-    logger: logger as never,
+    // Fastify 5 requires an existing logger to be passed via `loggerInstance`;
+    // the `logger` option only accepts a boolean or a pino *config* object.
+    loggerInstance: logger as FastifyBaseLogger,
     bodyLimit: 1024 * 1024,
   });
 
   void fastify.register(cors, {
     origin: true,
     methods: ["GET", "OPTIONS"],
+    // Let SDK clients read the signature on cross-origin responses.
+    exposedHeaders: ["X-Indexer-Signature"],
   });
+
+  // Optional read-API response signing. When a signing key is configured we
+  // sign the exact serialized payload we are about to send, over the canonical
+  // envelope `WSTDIEM_INDEXER_V1\n${url}\n${payload}` (EIP-191). The URL is part
+  // of the signed message so a valid `/snapshots/latest` body cannot be replayed
+  // as the response to `/actions?actionId=...`. This is the producing side of the
+  // verification the SDK performs in `IndexerClient.get` (X-Indexer-Signature).
+  const signer = config.signingKey ? privateKeyToAccount(config.signingKey as Hex) : null;
+  if (signer) {
+    logger.info({ signer: signer.address }, "read API response signing enabled");
+    fastify.addHook("onSend", async (request, reply, payload) => {
+      // Only JSON GET bodies are signed; skip CORS preflight and non-string
+      // (stream/buffer) payloads, which SDK read clients never consume.
+      if (request.method !== "GET" || typeof payload !== "string") return payload;
+      const message = `WSTDIEM_INDEXER_V1\n${request.url}\n${payload}`;
+      const signature = await signer.signMessage({ message });
+      void reply.header("X-Indexer-Signature", signature);
+      return payload;
+    });
+  }
 
   const heads = new HeadRepository(db);
   const actionSteps = new ActionStepRepository(db);

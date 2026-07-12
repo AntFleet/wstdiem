@@ -138,3 +138,53 @@ export type ExitAction = Extract<Action, { primaryType: "Exit" }>;
 export type ForceExitAction = Extract<Action, { primaryType: "ForceExit" }>;
 export type AutomationExecAction = Extract<Action, { primaryType: "AutomationExec" }>;
 export type RevokeAction = Extract<Action, { primaryType: "Revoke" }>;
+
+// ─── Friendly envelope-derivation inputs (T2a) ──────────────────────────────
+//
+// The `build{Open,Rebalance,Exit,ForceExit}Params` helpers take these
+// human-facing inputs (amount, leverage, MEV mode) and derive the fully-
+// assembled `CommonActionEnvelope & { bounds }` envelope — sourcing
+// registryVersion / merkleRoot / nonce / quoteBlockNumber / evidenceBundleHash
+// from the live readers so the caller never hand-builds a security-critical
+// digest field. The screens (LoopBuilder / Positions) feed the result straight
+// into `quoteOpen` / `previewTransaction` / `quoteForceExit`.
+
+/** Fields common to every build-params input. */
+export interface BuildParamsCommon {
+  market: MarketId;
+  owner: Address;
+  mevProtectionMode: MevProtectionMode;
+  mevWaiverBits: number;
+  /** Slippage tolerance for the derived bounds. Default 50 bps (0.5%). */
+  slippageBps?: BasisPoints;
+  /** Seconds from now until the action deadline. Default 600 (10 min). */
+  deadlineSeconds?: number;
+}
+
+export interface BuildOpenParamsInput extends BuildParamsCommon {
+  /** wstDIEM collateral (equity) the user supplies. */
+  collateralAmount: bigint;
+  /** Target leverage in basis points (e.g. 20_000 = 2.0x). */
+  leverageBps: BasisPoints;
+}
+
+export interface BuildRebalanceParamsInput extends BuildParamsCommon {
+  /** Notional collateral budget for the rebalance leg. */
+  collateralAmount: bigint;
+  /** Target post-rebalance leverage in basis points. */
+  leverageBps: BasisPoints;
+}
+
+export interface BuildExitParamsInput extends BuildParamsCommon {
+  /** Collateral to unwind (wstDIEM). */
+  collateralAmount: bigint;
+  /** Exit route; defaults to "CURVE". */
+  routeKind?: ExitRouteKind;
+}
+
+export interface BuildForceExitParamsInput extends BuildParamsCommon {
+  /** Collateral to unwind (wstDIEM). */
+  collateralAmount: bigint;
+  /** Bitmask of acknowledged force-exit risks (see `ForceExitRiskBit`). */
+  acknowledgedRisks: number;
+}
