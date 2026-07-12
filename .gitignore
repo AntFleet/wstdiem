@@ -14,3 +14,6 @@ lib/openzeppelin-contracts/lib/
 indexer/data/
 anchor/data/
 .env
+
+# forge broadcast artifacts (deploy provenance; addresses recorded in configs/*.json)
+broadcast/
