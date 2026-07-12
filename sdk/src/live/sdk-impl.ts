@@ -1481,7 +1481,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
         this.contracts.loopExecutorV2,
       ),
       primaryType: "Open",
-      bounds: this.deriveOpenBounds(input, slippageBps),
+      bounds: await this.deriveOpenBounds(input, slippageBps),
     };
     return this.withEvidenceHash(draft, base.pinned);
   }
@@ -1555,7 +1555,17 @@ export class LiveWstdiemSdk implements WstdiemSdk {
         this.registry.registryMerkleRoot(),
         this.readClient.getBlockNumber(),
       ]);
-    const nonce = await this.allocateNonce(input.owner, 0n, primaryType);
+    // ForceExit does NOT spend the LoopAuthorization nonce bitmap: it executes
+    // through LoopForceExitExecutor, whose replay protection is the per-attempt
+    // throttle counter + the signed `deadline` + position state (a successful
+    // force-exit empties the position, so a replay reverts). The bitmap is never
+    // written for FORCE_EXIT, so scanning it would always return bit 0 and imply
+    // a uniqueness guarantee that the chain does not provide. Use a deterministic
+    // (slot 0, bit 0) nonce — it only feeds the digest, not an on-chain spend.
+    const nonce =
+      primaryType === "ForceExit"
+        ? { nonceSlot: 0n, nonceBit: 0 }
+        : await this.allocateNonce(input.owner, 0n, primaryType);
     const deadlineSeconds = input.deadlineSeconds ?? DEFAULT_DEADLINE_SECONDS;
     const deadline = asUnixSeconds(
       BigInt(Math.floor(Date.now() / 1000) + deadlineSeconds),
@@ -1572,7 +1582,9 @@ export class LiveWstdiemSdk implements WstdiemSdk {
   }
 
   /** Scan the (owner, policyId, primaryType) nonce bitmap for the first
-   * unused bit, walking successive slots when a slot is fully consumed. */
+   * unused bit, walking successive slots when a slot is fully consumed. Used
+   * for Open/Rebalance/Exit (spent by LoopAuthorization); NOT for ForceExit,
+   * which does not consume this bitmap — see `deriveEnvelopeBase`. */
   private async allocateNonce(
     owner: Address,
     policyId: bigint,
@@ -1638,18 +1650,28 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     return { ...draft, evidenceBundleHash: evidence.evidenceBundleHash };
   }
 
-  private deriveOpenBounds(
+  private async deriveOpenBounds(
     input: BuildOpenParamsInput,
     slippageBps: BasisPoints,
-  ): OpenBounds {
+  ): Promise<OpenBounds> {
     const leverageBps = BigInt(input.leverageBps);
     const levMinusOne = leverageBps > BPS_DENOM ? leverageBps - BPS_DENOM : 0n;
     const notionalBorrow = (input.collateralAmount * levMinusOne) / BPS_DENOM;
     const slip = BigInt(slippageBps);
     const maxBorrowedDiem = (notionalBorrow * (BPS_DENOM + slip)) / BPS_DENOM;
     const minBorrowedDiem = (notionalBorrow * (BPS_DENOM - slip)) / BPS_DENOM;
+    // The Open leg deposits the borrowed DIEM (loan token / vault asset) into
+    // the wstDIEM ERC-4626 vault, receiving wstDIEM *shares* as collateral. The
+    // floor on shares received is therefore the vault's live convertToShares of
+    // the borrow, minus the slippage haircut — NOT the raw DIEM amount, which
+    // only equals the share amount when the vault trades 1:1 (i.e. before any
+    // yield accrual). Using convertToShares makes the signed bound correct for a
+    // vault whose exchange rate has drifted from parity.
+    const vault = new VaultReader(this.readClient, this.bundleFor(input.market).vault);
+    const expectedShares = await vault.convertToShares(notionalBorrow);
+    const minWstDiemReceived = (expectedShares * (BPS_DENOM - slip)) / BPS_DENOM;
     return {
-      minWstDiemReceived: minBorrowedDiem,
+      minWstDiemReceived,
       minBorrowedDiem,
       maxBorrowedDiem,
       maxSlippageBps: slippageBps,

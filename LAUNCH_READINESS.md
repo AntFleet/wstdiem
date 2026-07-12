@@ -53,13 +53,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
   `signAndAttachAction` → `broadcastTx` (wagmi). Fail-closed gates preserved.
 - [x] **T3. App: wire rebalance / exit / force-exit** sign paths in `Positions.tsx`. ✅
   App 115 passing.
-  > ⚠️ **Review caveat (T3, force-exit only):** `allocateNonce` reads the `LoopAuthorization`
-  > nonce bitmap for the ForceExit primaryType, but force-exit executes through
-  > `LoopForceExitExecutor` (attempt-throttled) and does **not** spend that bitmap. Open/
-  > rebalance/exit nonce allocation is correct; **ForceExit nonce derivation must be
-  > validated against the deployed mock system (T6)** — may need a dedicated force-exit
-  > nonce reader or a different allocation rule. Non-blocking for the core flow; force-exit
-  > is an emergency edge path.
+  > ✅ **Review caveat (T3, force-exit nonce) — RESOLVED.** Traced the on-chain path:
+  > `LoopForceExitExecutor` guards replay with a throttle counter + signed `deadline` +
+  > position state and **never spends the `LoopAuthorization` nonce bitmap**. Fixed
+  > `buildForceExitParams` to use a deterministic `(slot 0, bit 0)` nonce instead of
+  > scanning a bitmap that is never written for FORCE_EXIT (which would have implied a
+  > uniqueness guarantee the chain doesn't provide). Test asserts the deterministic path.
 - [ ] ~~T4. Automation-policy create~~ — **deferred (manual-only beta).**
 
 ### P1 — makes a beta *deployable* (deploy mocks)
@@ -134,5 +133,18 @@ The app's Automation *create* screen (T4) is therefore also out of first-beta sc
   (T5 mock external-protocol contracts + T6 local deploy smoke) in parallel.
 - 2026-07-12: Track A done — build*Params + app wiring (SDK 299, app 115). Track B done —
   mock protocols + DeployMocks + MockDeploymentE2E (contracts 215, incl. open+exit E2E).
-  Independently re-verified all suites green. Remaining: 🔒 Sepolia broadcast + live e2e +
-  ForceExit nonce re-check.
+  Independently re-verified all suites green. PR #1 opened.
+- 2026-07-12: Closed top 2 review flags. **#1 ForceExit nonce** — deterministic (0,0),
+  documented the real replay model (throttle+deadline+position-state). **#2 bounds** —
+  `minWstDiemReceived` now derived from live `vault.convertToShares(borrow)` instead of the
+  1:1 DIEM→wstDIEM shortcut. SDK 299 (both fixes tested), app 115, typecheck clean.
+
+### Review flags status
+1. ForceExit nonce — ✅ closed.
+2. Bounds heuristics — 🟡 partially closed: the 1:1 vault shortcut is fixed
+   (`minWstDiemReceived` via `convertToShares`). Still client-side defaults for
+   `minHealthFactor` (1.05 WAD), fee caps, liq distance — calibrate against registry-
+   configured floors / oracle once deployed (T6).
+3. e2e coverage gap — open (needs Playwright pass vs live deployment).
+4. Force-exit display vs signed parity — open (low).
+5. evidenceBundleHash — open (informational; low).

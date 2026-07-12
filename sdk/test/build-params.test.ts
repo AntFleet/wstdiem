@@ -43,6 +43,9 @@ function buildSdk(opts?: { nonceBitmap?: bigint; blockNumber?: bigint }) {
       registryMerkleRoot: () => MERKLE_ROOT,
       // nonce bitmap: default bit0 used so the allocator picks bit1.
       nonceBitmap: () => opts?.nonceBitmap ?? 0b1n,
+      // wstDIEM vault at 0.98 shares per DIEM asset (yield-appreciated), so
+      // minWstDiemReceived reflects the real conversion, not a 1:1 assumption.
+      convertToShares: (args) => ((args[0] as bigint) * 98n) / 100n,
       marketParams: () => ({
         loanToken: BUNDLE.loanToken,
         collateralToken: BUNDLE.collateralToken,
@@ -130,7 +133,11 @@ describe("buildOpenParams", () => {
     // minBorrowedDiem = 2_000_000 * 9900/10000 = 1_980_000
     expect(action.bounds.maxBorrowedDiem).toBe(2_020_000n);
     expect(action.bounds.minBorrowedDiem).toBe(1_980_000n);
-    expect(action.bounds.minWstDiemReceived).toBe(1_980_000n);
+    // minWstDiemReceived = convertToShares(2_000_000) * (9900/10000)
+    //                    = (2_000_000 * 98/100) * 9900/10000
+    //                    = 1_960_000 * 9900/10000 = 1_940_400
+    // (proves the vault conversion is applied, not a 1:1 DIEM→wstDIEM shortcut)
+    expect(action.bounds.minWstDiemReceived).toBe(1_940_400n);
     expect(action.bounds.maxLeverageBps).toBe(30_000);
     expect(action.bounds.maxSlippageBps).toBe(100);
     expect(action.bounds.minHealthFactor).toBe(1_050_000_000_000_000_000n);
@@ -233,6 +240,13 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
     expect(action.verifyingContract).toBe(LOOP_FORCE_EXIT_AUTH);
     expect(action.executor).toBe(LOOP_FORCE_EXEC);
     expect(action.bounds.acknowledgedRisks).toBe(0b11);
+    // ForceExit uses a deterministic (0,0) nonce and does NOT scan the
+    // LoopAuthorization bitmap (force-exit never spends it — replay is guarded
+    // by the executor throttle + deadline + position state). The default mock
+    // bitmap has bit 0 set (0b1n), so the old bitmap-scanning path would have
+    // returned bit 1; asserting bit 0 proves the deterministic path is taken.
+    expect(action.nonceSlot).toBe(0n);
+    expect(action.nonceBit).toBe(0);
     const preview = await sdk.quoteForceExit(action);
     expect(preview.digest).toMatch(/^0x[0-9a-f]{64}$/);
   });
