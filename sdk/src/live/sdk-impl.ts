@@ -36,6 +36,11 @@ import {
 import type {
   Action,
   AutomationExecAction,
+  BuildExitParamsInput,
+  BuildForceExitParamsInput,
+  BuildOpenParamsInput,
+  BuildParamsCommon,
+  BuildRebalanceParamsInput,
   CommonActionEnvelope,
   ExitAction,
   ExitBounds,
@@ -79,12 +84,20 @@ import type {
   RegistryVersion,
 } from "../types/branded.js";
 import {
+  asBasisPoints,
   asBlockNumber,
   asChainId,
   asMarketId,
+  asPolicyId,
   asRegistryVersion,
   asStateBitmap,
   asUnixSeconds,
+} from "../types/branded.js";
+import type {
+  BasisPoints,
+  BlockNumber as BrandedBlockNumber,
+  RegistryVersion as BrandedRegistryVersion,
+  UnixSeconds,
 } from "../types/branded.js";
 import {
   EXECUTION_KIND_FROM_U8,
@@ -179,6 +192,40 @@ const PRIMARY_TYPES_FOR_READINESS: PrimaryType[] = [
   "AutomationExec",
   "Revoke",
 ];
+
+// ─── T2a envelope-derivation defaults ───────────────────────────────────────
+//
+// Heuristic defaults for the `build*Params` helpers. These populate the
+// bounds + freshness envelope from friendly inputs; they are deliberately
+// conservative fail-closed defaults and are re-validated against live quote
+// routes + on-chain marketParams at `quoteX` / execution time. See the
+// helper docs for how each field is sourced.
+const BPS_DENOM = 10_000n;
+const DEFAULT_DEADLINE_SECONDS = 600; // 10 min
+const DEFAULT_SLIPPAGE_BPS = 50; // 0.5%
+const DEFAULT_MAX_QUOTE_AGE_BLOCKS = 30; // ≈ 1 min at 2s Base blocks
+const DEFAULT_MAX_QUOTE_DEVIATION_BPS = 100; // 1%
+const DEFAULT_MIN_HEALTH_FACTOR_WAD = 1_050_000_000_000_000_000n; // 1.05 WAD
+const DEFAULT_MIN_LIQ_DISTANCE_BPS = 500; // 5%
+const DEFAULT_MAX_UTIL_IMPACT_BPS = 500; // 5%
+const DEFAULT_MAX_CURVE_SHARE_BPS = 2_000; // 20%
+const DEFAULT_LEVERAGE_TOLERANCE_BPS = 200; // 2%
+const DEFAULT_FLASH_FEE_BPS = 30n; // 0.3% of borrow
+const DEFAULT_FORCE_EXIT_FLASH_FEE_BPS = 50n; // looser 0.5% budget
+const DEFAULT_PROTOCOL_FEE_BPS = 100n; // 1% of collateral
+const NONCE_SLOT_SCAN_LIMIT = 4n; // scan up to 1024 nonces before failing
+const ZERO_BYTES32 = ("0x" + "00".repeat(32)) as Bytes32;
+
+interface EnvelopeBase {
+  registryVersion: BrandedRegistryVersion;
+  registryMerkleRoot: Bytes32;
+  quoteBlockNumber: BrandedBlockNumber;
+  /** Raw bigint block used to pin the evidence resolve. */
+  pinned: bigint;
+  nonceSlot: bigint;
+  nonceBit: number;
+  deadline: UnixSeconds;
+}
 
 /**
  * Live WstdiemSdk implementation. Construct via `createSdk(config)`.
@@ -1407,6 +1454,280 @@ export class LiveWstdiemSdk implements WstdiemSdk {
           }) as Hex
         : ("0x" as Hex);
     return { typedData: { target }, transaction: { to, data } };
+  }
+
+  // ─── T2a: envelope derivation from friendly inputs ──────────────────────
+  //
+  // Each helper composes the existing readers (registry / authorization),
+  // the read client (fresh block), and config (verifyingContract + executor)
+  // into a fully-assembled action envelope. The critical digest fields —
+  // registryVersion, registryMerkleRoot, nonceSlot/nonceBit, quoteBlockNumber,
+  // verifyingContract, executor, policyId (0), executionKind (OWNER_DIRECT) —
+  // are derived here so callers never hand-build them. `evidenceBundleHash`
+  // is populated via the same `resolveEvidence` path `assembleAuthorization`
+  // uses, so the envelope's field matches what the digest will commit at the
+  // pinned block. (Note: `assembleAuthorization` re-resolves evidence at quote
+  // /sign time, so this field is belt-and-suspenders — the digest never trusts
+  // the caller-supplied value.)
+
+  async buildOpenParams(input: BuildOpenParamsInput): Promise<OpenAction> {
+    const base = await this.deriveEnvelopeBase(input, "Open");
+    const slippageBps = input.slippageBps ?? asBasisPoints(DEFAULT_SLIPPAGE_BPS);
+    const draft: OpenAction = {
+      ...this.commonEnvelopeFields(
+        input,
+        base,
+        this.contracts.loopAuthorization,
+        this.contracts.loopExecutorV2,
+      ),
+      primaryType: "Open",
+      bounds: this.deriveOpenBounds(input, slippageBps),
+    };
+    return this.withEvidenceHash(draft, base.pinned);
+  }
+
+  async buildRebalanceParams(
+    input: BuildRebalanceParamsInput,
+  ): Promise<RebalanceAction> {
+    const base = await this.deriveEnvelopeBase(input, "Rebalance");
+    const slippageBps = input.slippageBps ?? asBasisPoints(DEFAULT_SLIPPAGE_BPS);
+    const draft: RebalanceAction = {
+      ...this.commonEnvelopeFields(
+        input,
+        base,
+        this.contracts.loopAuthorization,
+        this.contracts.loopExecutorV2,
+      ),
+      primaryType: "Rebalance",
+      bounds: this.deriveRebalanceBounds(input, slippageBps),
+    };
+    return this.withEvidenceHash(draft, base.pinned);
+  }
+
+  async buildExitParams(input: BuildExitParamsInput): Promise<ExitAction> {
+    const base = await this.deriveEnvelopeBase(input, "Exit");
+    const slippageBps = input.slippageBps ?? asBasisPoints(DEFAULT_SLIPPAGE_BPS);
+    const routeKind: ExitRouteKind = input.routeKind ?? "CURVE";
+    const draft: ExitAction = {
+      ...this.commonEnvelopeFields(
+        input,
+        base,
+        this.contracts.loopAuthorization,
+        this.contracts.loopExecutorV2,
+      ),
+      primaryType: "Exit",
+      routeKind,
+      bounds: this.deriveExitBounds(input, slippageBps, routeKind),
+    };
+    return this.withEvidenceHash(draft, base.pinned);
+  }
+
+  async buildForceExitParams(
+    input: BuildForceExitParamsInput,
+  ): Promise<ForceExitAction> {
+    // ForceExit binds to the distinct LoopForceExitAuthorizer domain +
+    // LoopForceExitExecutor, per §A6.2.1.
+    const base = await this.deriveEnvelopeBase(input, "ForceExit");
+    const slippageBps = input.slippageBps ?? asBasisPoints(DEFAULT_SLIPPAGE_BPS);
+    const draft: ForceExitAction = {
+      ...this.commonEnvelopeFields(
+        input,
+        base,
+        this.contracts.loopForceExitAuthorizer,
+        this.contracts.loopForceExitExecutor,
+      ),
+      primaryType: "ForceExit",
+      bounds: this.deriveForceExitBounds(input, slippageBps),
+    };
+    return this.withEvidenceHash(draft, base.pinned);
+  }
+
+  /** Source registryVersion + merkleRoot (registry reader), a fresh quote
+   * block (read client), an unused nonce slot/bit (authorization reader), and
+   * a deadline `deadlineSeconds` from now. */
+  private async deriveEnvelopeBase(
+    input: BuildParamsCommon,
+    primaryType: PrimaryType,
+  ): Promise<EnvelopeBase> {
+    const [registryVersion, registryMerkleRoot, quoteBlockNumber] =
+      await Promise.all([
+        this.registry.registryVersion(),
+        this.registry.registryMerkleRoot(),
+        this.readClient.getBlockNumber(),
+      ]);
+    const nonce = await this.allocateNonce(input.owner, 0n, primaryType);
+    const deadlineSeconds = input.deadlineSeconds ?? DEFAULT_DEADLINE_SECONDS;
+    const deadline = asUnixSeconds(
+      BigInt(Math.floor(Date.now() / 1000) + deadlineSeconds),
+    );
+    return {
+      registryVersion: asRegistryVersion(registryVersion),
+      registryMerkleRoot,
+      quoteBlockNumber: asBlockNumber(quoteBlockNumber),
+      pinned: quoteBlockNumber,
+      nonceSlot: nonce.nonceSlot,
+      nonceBit: nonce.nonceBit,
+      deadline,
+    };
+  }
+
+  /** Scan the (owner, policyId, primaryType) nonce bitmap for the first
+   * unused bit, walking successive slots when a slot is fully consumed. */
+  private async allocateNonce(
+    owner: Address,
+    policyId: bigint,
+    primaryType: PrimaryType,
+  ): Promise<{ nonceSlot: bigint; nonceBit: number }> {
+    for (let slot = 0n; slot < NONCE_SLOT_SCAN_LIMIT; slot++) {
+      const bitmap = await this.authorization.nonceBitmap(
+        owner,
+        policyId,
+        primaryType,
+        slot,
+      );
+      for (let bit = 0; bit < 256; bit++) {
+        if ((bitmap & (1n << BigInt(bit))) === 0n) {
+          return { nonceSlot: slot, nonceBit: bit };
+        }
+      }
+    }
+    throw new Error(
+      `allocateNonce: no free nonce bit in the first ${NONCE_SLOT_SCAN_LIMIT} ` +
+        `slots for ${primaryType} (owner=${owner}). Revoke stale authorizations ` +
+        "or widen the scan window.",
+    );
+  }
+
+  /** Assemble the primaryType-agnostic envelope fields. `evidenceBundleHash`
+   * starts as the zero placeholder and is filled by `withEvidenceHash`. */
+  private commonEnvelopeFields(
+    input: BuildParamsCommon,
+    base: EnvelopeBase,
+    verifyingContract: Address,
+    executor: Address,
+  ): Omit<CommonActionEnvelope, "primaryType"> {
+    return {
+      owner: input.owner,
+      chainId: this.config.chainId,
+      verifyingContract,
+      executor,
+      market: input.market,
+      registryVersion: base.registryVersion,
+      registryMerkleRoot: base.registryMerkleRoot,
+      policyId: asPolicyId(0n),
+      nonceSlot: base.nonceSlot,
+      nonceBit: base.nonceBit,
+      executionKind: "OWNER_DIRECT",
+      deadline: base.deadline,
+      quoteBlockNumber: base.quoteBlockNumber,
+      maxQuoteAgeBlocks: DEFAULT_MAX_QUOTE_AGE_BLOCKS,
+      maxQuoteDeviationBps: asBasisPoints(DEFAULT_MAX_QUOTE_DEVIATION_BPS),
+      mevProtectionMode: input.mevProtectionMode,
+      mevWaiverBits: input.mevWaiverBits,
+      evidenceBundleHash: ZERO_BYTES32,
+    };
+  }
+
+  /** Fill `evidenceBundleHash` via the same resolveEvidence path the digest
+   * assembly uses, pinned to the quote block. */
+  private async withEvidenceHash<T extends Action>(
+    draft: T,
+    pinned: bigint,
+  ): Promise<T> {
+    const evidence = await this.resolveEvidence(draft, pinned);
+    return { ...draft, evidenceBundleHash: evidence.evidenceBundleHash };
+  }
+
+  private deriveOpenBounds(
+    input: BuildOpenParamsInput,
+    slippageBps: BasisPoints,
+  ): OpenBounds {
+    const leverageBps = BigInt(input.leverageBps);
+    const levMinusOne = leverageBps > BPS_DENOM ? leverageBps - BPS_DENOM : 0n;
+    const notionalBorrow = (input.collateralAmount * levMinusOne) / BPS_DENOM;
+    const slip = BigInt(slippageBps);
+    const maxBorrowedDiem = (notionalBorrow * (BPS_DENOM + slip)) / BPS_DENOM;
+    const minBorrowedDiem = (notionalBorrow * (BPS_DENOM - slip)) / BPS_DENOM;
+    return {
+      minWstDiemReceived: minBorrowedDiem,
+      minBorrowedDiem,
+      maxBorrowedDiem,
+      maxSlippageBps: slippageBps,
+      maxPriceImpactBps: slippageBps,
+      maxLeverageBps: input.leverageBps,
+      minHealthFactor: DEFAULT_MIN_HEALTH_FACTOR_WAD,
+      minLiquidationDistanceBps: asBasisPoints(DEFAULT_MIN_LIQ_DISTANCE_BPS),
+      maxMorphoUtilizationImpactBps: asBasisPoints(DEFAULT_MAX_UTIL_IMPACT_BPS),
+      flashFeeCap: (maxBorrowedDiem * DEFAULT_FLASH_FEE_BPS) / BPS_DENOM,
+      protocolFeeCap:
+        (input.collateralAmount * DEFAULT_PROTOCOL_FEE_BPS) / BPS_DENOM,
+      automationFeeCap: 0n,
+    };
+  }
+
+  private deriveRebalanceBounds(
+    input: BuildRebalanceParamsInput,
+    slippageBps: BasisPoints,
+  ): RebalanceBounds {
+    const leverageBps = BigInt(input.leverageBps);
+    const levMinusOne = leverageBps > BPS_DENOM ? leverageBps - BPS_DENOM : 0n;
+    const maxDebtIncrease = (input.collateralAmount * levMinusOne) / BPS_DENOM;
+    return {
+      targetLeverageBps: input.leverageBps,
+      targetLeverageToleranceBps: asBasisPoints(DEFAULT_LEVERAGE_TOLERANCE_BPS),
+      minPostHealthFactor: DEFAULT_MIN_HEALTH_FACTOR_WAD,
+      minLiquidationDistanceBps: asBasisPoints(DEFAULT_MIN_LIQ_DISTANCE_BPS),
+      maxDebtIncrease,
+      maxCollateralSold: input.collateralAmount,
+      maxSlippageBps: slippageBps,
+      maxCurvePositionShareBps: asBasisPoints(DEFAULT_MAX_CURVE_SHARE_BPS),
+      maxMorphoUtilizationImpactBps: asBasisPoints(DEFAULT_MAX_UTIL_IMPACT_BPS),
+      flashFeeCap: (maxDebtIncrease * DEFAULT_FLASH_FEE_BPS) / BPS_DENOM,
+      protocolFeeCap:
+        (input.collateralAmount * DEFAULT_PROTOCOL_FEE_BPS) / BPS_DENOM,
+      automationFeeCap: 0n,
+    };
+  }
+
+  private deriveExitBounds(
+    input: BuildExitParamsInput,
+    slippageBps: BasisPoints,
+    routeKind: ExitRouteKind,
+  ): ExitBounds {
+    const slip = BigInt(slippageBps);
+    const minRepayment =
+      (input.collateralAmount * (BPS_DENOM - slip)) / BPS_DENOM;
+    return {
+      minRepayment,
+      maxCollateralSold: input.collateralAmount,
+      maxSlippageBps: slippageBps,
+      maxCurvePositionShareBps: asBasisPoints(DEFAULT_MAX_CURVE_SHARE_BPS),
+      maxMorphoUtilizationImpactBps: asBasisPoints(DEFAULT_MAX_UTIL_IMPACT_BPS),
+      flashFeeCap: (input.collateralAmount * DEFAULT_FLASH_FEE_BPS) / BPS_DENOM,
+      protocolFeeCap:
+        (input.collateralAmount * DEFAULT_PROTOCOL_FEE_BPS) / BPS_DENOM,
+      automationFeeCap: 0n,
+      repayOnly: routeKind === "REPAY_ONLY",
+      acceptsThirdPartyRepay: false,
+    };
+  }
+
+  private deriveForceExitBounds(
+    input: BuildForceExitParamsInput,
+    slippageBps: BasisPoints,
+  ): ForceExitBounds {
+    const slip = BigInt(slippageBps);
+    const minRepayment =
+      (input.collateralAmount * (BPS_DENOM - slip)) / BPS_DENOM;
+    return {
+      minRepayment,
+      maxCollateralSold: input.collateralAmount,
+      looseSlippageBps: slippageBps,
+      looseFlashFeeCap:
+        (input.collateralAmount * DEFAULT_FORCE_EXIT_FLASH_FEE_BPS) / BPS_DENOM,
+      maxCurvePositionShareBps: asBasisPoints(DEFAULT_MAX_CURVE_SHARE_BPS),
+      acknowledgedRisks: input.acknowledgedRisks,
+    };
   }
 
   // ─── Quote methods (live on-chain quoting) ──────────────────────────────
