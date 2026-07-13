@@ -17,3 +17,7 @@ anchor/data/
 
 # forge broadcast artifacts (deploy provenance; addresses recorded in configs/*.json)
 broadcast/
+
+# local run logs + indexer data (Sepolia beta helper)
+.run/
+indexer/data/
