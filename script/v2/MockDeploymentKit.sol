@@ -243,38 +243,82 @@ abstract contract MockDeploymentKit is CommonBase {
         registry.setSourceFreshnessThreshold(LoopV1Types.SOURCE_CHAINLINK_FEED, 86_400);
     }
 
+    /// @dev The six external-protocol source ids the mock market pins fingerprints for, paired with
+    ///      the integration address each one covers. Shared by the queue + apply paths (and the live
+    ///      2-phase Sepolia script) so their integrationId derivation can never drift.
+    function _mockFingerprintSourceIds() internal pure returns (bytes32[] memory sourceIds) {
+        sourceIds = new bytes32[](6);
+        sourceIds[0] = LoopV1Types.SOURCE_MORPHO_POSITION;
+        sourceIds[1] = LoopV1Types.SOURCE_VAULT_NAV;
+        sourceIds[2] = LoopV1Types.SOURCE_CHAINLINK_FEED;
+        sourceIds[3] = LoopV1Types.SOURCE_CURVE_QUOTE;
+        sourceIds[4] = LoopV1Types.SOURCE_SEQUENCER_UPTIME;
+        sourceIds[5] = LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
+    }
+
+    function _mockFingerprintSources(DeploymentManifest.DeploymentConfig memory config)
+        internal
+        pure
+        returns (bytes32[] memory sourceIds, address[] memory integrations)
+    {
+        sourceIds = _mockFingerprintSourceIds();
+        integrations = new address[](6);
+        integrations[0] = config.market.morpho;
+        integrations[1] = config.market.wstDiemVault;
+        integrations[2] = config.market.chainlinkFeed;
+        integrations[3] = config.market.curvePool;
+        integrations[4] = config.market.sequencerFeed;
+        integrations[5] = config.market.uniswapV3FlashPool;
+    }
+
+    /// @dev Rebuild the six integrationIds for a market from just its id — lets the phase-2 apply
+    ///      run in a fresh process (no in-memory config) and reference the queued pending entries.
+    function _marketIntegrationIds(bytes32 marketId) internal pure returns (bytes32[] memory integrationIds) {
+        bytes32[] memory sourceIds = _mockFingerprintSourceIds();
+        integrationIds = new bytes32[](sourceIds.length);
+        for (uint256 i = 0; i < sourceIds.length; i++) {
+            integrationIds[i] = _integrationId(marketId, sourceIds[i]);
+        }
+    }
+
+    /// @dev Phase 1 (broadcastable on a live chain): queue the six fingerprints. Returns the
+    ///      integrationIds so the apply phase can reference the same pending entries.
+    function _queueMockFingerprints(
+        DeploymentManifest.DeploymentConfig memory config,
+        LoopRegistry registry
+    ) internal returns (bytes32[] memory integrationIds) {
+        (bytes32[] memory sourceIds, address[] memory integrations) = _mockFingerprintSources(config);
+        integrationIds = new bytes32[](sourceIds.length);
+        for (uint256 i = 0; i < sourceIds.length; i++) {
+            bytes32 integrationId = _integrationId(config.market.id, sourceIds[i]);
+            integrationIds[i] = integrationId;
+            registry.queueExternalFingerprintUpdate(
+                integrationId, _fingerprint(config, registry, sourceIds[i], integrations[i])
+            );
+        }
+    }
+
+    /// @dev Phase 2 (broadcastable only after `REGISTRY_TIMELOCK_BLOCKS` has elapsed on the live
+    ///      chain): apply the previously-queued fingerprints in one batch.
+    function _applyMockFingerprints(LoopRegistry registry, bytes32[] memory integrationIds) internal {
+        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](integrationIds.length);
+        for (uint256 i = 0; i < integrationIds.length; i++) {
+            ops[i] = ILoopRegistry.BatchOp({op: 14, data: abi.encode(integrationIds[i])}); // OP_APPLY_EXTERNAL_FINGERPRINT
+        }
+        registry.batchUpdate(ops, registry.registryVersion() + 1, keccak256("wstdiem.mock.fingerprints"));
+    }
+
     /// @dev Queues the six external-protocol fingerprints, crosses the registry timelock, and
     ///      applies them atomically — the same sequence `BaseMainnetForkSetup` runs against live
-    ///      Base state, here against the mock venues.
+    ///      Base state, here against the mock venues. Local-only: `vm.roll` is a cheatcode that
+    ///      cannot advance a real chain, so a live broadcast must use the queue/apply split above.
     function _bootstrapMockFingerprints(
         DeploymentManifest.DeploymentConfig memory config,
         LoopRegistry registry
     ) internal {
-        bytes32[] memory sourceIds = new bytes32[](6);
-        address[] memory integrations = new address[](6);
-        sourceIds[0] = LoopV1Types.SOURCE_MORPHO_POSITION;
-        integrations[0] = config.market.morpho;
-        sourceIds[1] = LoopV1Types.SOURCE_VAULT_NAV;
-        integrations[1] = config.market.wstDiemVault;
-        sourceIds[2] = LoopV1Types.SOURCE_CHAINLINK_FEED;
-        integrations[2] = config.market.chainlinkFeed;
-        sourceIds[3] = LoopV1Types.SOURCE_CURVE_QUOTE;
-        integrations[3] = config.market.curvePool;
-        sourceIds[4] = LoopV1Types.SOURCE_SEQUENCER_UPTIME;
-        integrations[4] = config.market.sequencerFeed;
-        sourceIds[5] = LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
-        integrations[5] = config.market.uniswapV3FlashPool;
-
-        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](6);
-        for (uint256 i = 0; i < sourceIds.length; i++) {
-            bytes32 integrationId = _integrationId(config.market.id, sourceIds[i]);
-            registry.queueExternalFingerprintUpdate(
-                integrationId, _fingerprint(config, registry, sourceIds[i], integrations[i])
-            );
-            ops[i] = ILoopRegistry.BatchOp({op: 14, data: abi.encode(integrationId)}); // OP_APPLY_EXTERNAL_FINGERPRINT
-        }
+        bytes32[] memory integrationIds = _queueMockFingerprints(config, registry);
         vm.roll(block.number + REGISTRY_TIMELOCK_BLOCKS);
-        registry.batchUpdate(ops, registry.registryVersion() + 1, keccak256("wstdiem.mock.fingerprints"));
+        _applyMockFingerprints(registry, integrationIds);
     }
 
     function _integrationId(bytes32 market, bytes32 sourceId) internal pure returns (bytes32) {

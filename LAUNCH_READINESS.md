@@ -75,7 +75,36 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 external dependenc
   markers. **Actual Sepolia broadcast still 🔒** — needs funded deployer key + RPC; see
   hand-off below.
 
-### 🔒 Sepolia broadcast hand-off (needs you)
+### ✅ Base Sepolia deploy — PHASE 1 LIVE (2026-07-12)
+
+The full mock system is deployed on Base Sepolia (chainId 84532) and all six external-protocol
+fingerprints are **queued**. Addresses are recorded in [`script/v2/configs/base-sepolia.json`](script/v2/configs/base-sepolia.json)
+under `_deployment`. Key facts:
+- **registry** `0xdfdaf03861400273a0a661ed6f9a1163864f2860` · **executorV2** `0xbcc854a8b4dbdf5acb08818cd19d5c0904914e38` · **authorization** `0xbaa4fbd327108aeaca64917737e3cecd18ab6099`
+- **bootstrapper** `0xcc0646563284d331c3e2349c21764e81cfe2cc2d` (currently owns the registry)
+- **market.id** `0x993a…61d2` · **deployer/operator** `0xb41891318Be43D2A966f574BaFC52D0a501Db96A`
+- Deployer key persisted at `~/.wstdiem-sepolia-deployer.json` (chmod 600, outside repo). Funded from the cobalt Sepolia wallet.
+- A live-broadcast blocker was found + fixed: the registry's curve/chainlink live baselines are block-sensitive, so a script that computes off-chain and broadcasts a separate queue tx reverts `FingerprintInvalid(3)`. Fix = on-chain `MockFingerprintBootstrapper` (`contracts/v2/mocks/`) that computes+queues atomically, driven by `DeployMocksSepolia.s.sol`. Local proof: `test/foundry/v2/MockBootstrapperE2E.t.sol`.
+
+### ⏳ PHASE 2 — apply fingerprints (at/after block 44184367, ~2026-07-15)
+
+The registry timelock (130_000 blocks, ~3 days) must elapse before the fingerprints can apply.
+Until then `validateExternalConfig` is false and no loop can open. When the block is reached:
+
+```
+WSTDIEM_BOOTSTRAPPER=0xcc0646563284d331c3e2349c21764e81cfe2cc2d \
+WSTDIEM_MOCK_GOVERNANCE=0xb41891318Be43D2A966f574BaFC52D0a501Db96A \
+forge script script/v2/DeployMocksSepolia.s.sol:DeployMocksSepolia --sig "applyFingerprints()" \
+  --rpc-url https://base-sepolia-rpc.publicnode.com \
+  --private-key $(node -e 'const w=require(process.env.HOME+"/.wstdiem-sepolia-deployer.json");console.log((Array.isArray(w)?w[0]:w).privateKey||(Array.isArray(w)?w[0]:w).private_key)') \
+  --broadcast
+```
+
+This applies all six fingerprints, hands registry ownership to governance, and asserts the
+open/exit gates pass. After it lands, point app `VITE_CONTRACT_*` + service `.env` at the
+`_deployment` addresses and the market is live.
+
+### 🔒 Original hand-off (superseded by the above for the mock deploy)
 
 1. Provide a funded Base Sepolia deployer key + RPC (`WSTDIEM_MOCK_DEPLOYER`,
    `WSTDIEM_MOCK_GOVERNANCE`, RPC URL).
