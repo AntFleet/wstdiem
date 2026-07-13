@@ -78,8 +78,13 @@ export function buildAnchorService(args: {
         manifestHash,
       });
       logger.info(
-        { txHash: result.txHash, status: result.status },
-        "state snapshot submission complete",
+        {
+          txHash: result.txHash,
+          status: result.status,
+          blockHash: result.blockHash,
+          anchorBlock: decision.candidateAnchorBlock.toString(),
+        },
+        "state snapshot submission complete (with blockhash)",
       );
     } catch (err) {
       logger.error({ err }, "anchor tick failed");

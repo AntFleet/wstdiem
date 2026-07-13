@@ -467,7 +467,12 @@ export class LiveWstdiemSdk implements WstdiemSdk {
           blockNumber: snapshot.blockNumber,
           blockHash: snapshot.blockHash,
         },
-        { planningBlock: asBlockNumber(pinned), expectedSubmitter },
+        {
+          planningBlock: asBlockNumber(pinned),
+          expectedSubmitter,
+          // Audit B: verify indexer emission blockHash against RPC when fresh.
+          publicClient: this.readClient,
+        },
       );
       if (!result.ok) {
         throw new Error(
@@ -484,12 +489,18 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       g2: { anchor: indexerAnchor },
       g3: { quorum: rpcQuorum },
     });
+    // Audit B: under strict anchor mode, non-fresh anchors block every action
+    // class (G-PM-2 is not only diagnostic — it fails closed on perAction).
+    const perAction =
+      this.strictAnchor && indexerAnchor.status !== "fresh"
+        ? this.gatePerActionOnAnchor(perActionDecisions, indexerAnchor)
+        : perActionDecisions;
     return {
       market,
       ...(owner !== undefined ? { owner } : {}),
       blockNumber: asBlockNumber(currentBlock),
       stateBitmap: asStateBitmap(0),
-      perAction: perActionDecisions,
+      perAction,
       sources: [],
       sequencer: sequencer.status,
       indexerAnchor,
@@ -525,6 +536,26 @@ export class LiveWstdiemSdk implements WstdiemSdk {
         decision: "blocked",
         predicates: [...d.predicates, predicate],
         errors: [...d.errors, "RpcQuorumDegraded"],
+      };
+    }
+    return out as Record<PrimaryType, PerActionReadiness>;
+  }
+
+  /** Fail-closed per-action map when G-PM-2 indexer anchor is not fresh. */
+  private gatePerActionOnAnchor(
+    decisions: Record<PrimaryType, PerActionReadiness>,
+    anchor: AnchorFreshness,
+  ): Record<PrimaryType, PerActionReadiness> {
+    const predicate = `indexerAnchor=${anchor.status}`;
+    const out: Partial<Record<PrimaryType, PerActionReadiness>> = {};
+    for (const [pt, d] of Object.entries(decisions) as Array<[
+      PrimaryType,
+      PerActionReadiness,
+    ]>) {
+      out[pt] = {
+        decision: "blocked",
+        predicates: [...d.predicates, predicate],
+        errors: [...d.errors, "IndexerAnchorStale"],
       };
     }
     return out as Record<PrimaryType, PerActionReadiness>;
@@ -949,7 +980,11 @@ export class LiveWstdiemSdk implements WstdiemSdk {
           blockNumber: snapshot.blockNumber,
           blockHash: snapshot.blockHash,
         },
-        { planningBlock: asBlockNumber(pinned), expectedSubmitter },
+        {
+          planningBlock: asBlockNumber(pinned),
+          expectedSubmitter,
+          publicClient: this.readClient,
+        },
       );
       if (!result.ok) {
         throw new Error(

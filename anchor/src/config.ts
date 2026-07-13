@@ -22,7 +22,8 @@ export const AnchorConfigSchema = z.object({
   // Defaults to 1 -- effectively unconstrained beyond the on-chain cadence.
   minIndexerLagBlocks: z.coerce.bigint().default(1n),
   pollIntervalMs: z.coerce.number().int().positive().default(15_000),
-  txConfirmationBlocks: z.coerce.number().int().nonnegative().default(2),
+  // Align with indexer floor: never accept 0/1 confirmations in production.
+  txConfirmationBlocks: z.coerce.number().int().min(2).default(10),
   logLevel: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 

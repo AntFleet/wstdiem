@@ -114,7 +114,9 @@ export type AnchorCrossCheckResult =
         | "indexer-anchor-ahead-of-registry"
         | "manifest-hash-mismatch"
         | "no-matching-log"
-        | "submitter-untrusted";
+        | "submitter-untrusted"
+        | "emission-blockhash-mismatch"
+        | "missing-indexer-blockhash";
       details: string;
     };
 
@@ -131,7 +133,16 @@ export type AnchorCrossCheckResult =
 export async function crossCheckAnchor(
   reader: AnchorRegistryReader,
   indexerClaim: IndexerAnchorClaim,
-  opts: { planningBlock: BlockNumber; expectedSubmitter: Address },
+  opts: {
+    planningBlock: BlockNumber;
+    expectedSubmitter: Address;
+    /**
+     * Optional public client for RPC blockhash verification (audit B).
+     * When set and the emission block is still within the 256-block window,
+     * the indexer's claimed `blockHash` must match `eth_getBlockByNumber`.
+     */
+    publicClient?: PublicClient;
+  },
 ): Promise<AnchorCrossCheckResult> {
   const onChainAnchorBlock = await reader.lastAnchorBlock(BigInt(opts.planningBlock));
   // H2 fix: compare emission-block to emission-block. The indexer's claimed
@@ -174,6 +185,43 @@ export async function crossCheckAnchor(
       details: `on-chain submitter=${log.submitter} != registry.anchorSubmitter=${opts.expectedSubmitter} at logical anchorBlock=${indexerClaim.anchorBlock}`,
     };
   }
+
+  // Audit B: when the emission block is still in the EVM blockhash window,
+  // require the indexer-claimed emission blockHash to match the RPC head.
+  if (opts.publicClient) {
+    const claimHash = (indexerClaim.blockHash ?? "").toLowerCase();
+    if (!claimHash || claimHash === ("0x" + "0".repeat(64))) {
+      return {
+        ok: false,
+        reason: "missing-indexer-blockhash",
+        details: `indexer claim missing blockHash for emission blockNumber=${indexerClaim.blockNumber}`,
+      };
+    }
+    const planning = BigInt(opts.planningBlock);
+    const emission = BigInt(indexerClaim.blockNumber);
+    if (planning > emission && planning - emission <= 256n) {
+      try {
+        const block = await opts.publicClient.getBlock({ blockNumber: emission });
+        const live = (block.hash ?? "").toLowerCase();
+        if (!live || live !== claimHash) {
+          return {
+            ok: false,
+            reason: "emission-blockhash-mismatch",
+            details: `indexer blockHash=${indexerClaim.blockHash} != rpc block.hash=${block.hash} at emission=${indexerClaim.blockNumber}`,
+          };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          reason: "emission-blockhash-mismatch",
+          details: `failed to fetch emission block ${indexerClaim.blockNumber} for hash check: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        };
+      }
+    }
+  }
+
   return {
     ok: true,
     anchorBlock: indexerClaim.anchorBlock,

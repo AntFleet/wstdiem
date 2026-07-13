@@ -16,12 +16,16 @@ contract LoopAnchorRegistry is ILoopAnchorRegistry, ILoopV1Events {
         registry = registry_;
     }
 
+    /// @notice Legacy no-hash path — tests only. Production anchor must use WithBlockHash.
+    /// @dev Prefer `submitStateSnapshotWithBlockHash`. Kept so forge unit tests that do not
+    ///      care about reorg safety can still exercise cadence / submitter gates.
     function submitStateSnapshot(uint256 blockNumber, bytes32 manifestHash) external {
         _submit(blockNumber, bytes32(0), manifestHash, false);
     }
 
-    /// @notice Submit with blockhash cross-check when the block is still in the EVM window.
-    /// @dev High-tier (2026-06-17): closes blind notarization of stale/reorged indexer heads.
+    /// @notice Production submit path: blockhash cross-check when the block is still in the EVM window.
+    /// @dev Audit B (2026-06-17 / 2026-07-13): closes blind notarization of stale/reorged indexer heads.
+    ///      The off-chain anchor service always calls this entrypoint.
     function submitStateSnapshotWithBlockHash(uint256 blockNumber, bytes32 blockHash, bytes32 manifestHash)
         external
     {
