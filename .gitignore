@@ -17,3 +17,4 @@ anchor/data/
 
 # forge broadcast artifacts (deploy provenance; addresses recorded in configs/*.json)
 broadcast/
+.run/

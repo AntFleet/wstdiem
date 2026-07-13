@@ -7,7 +7,7 @@
 import { test } from "@playwright/test";
 
 test.describe("Authorize via ECDSA (§13.4 row 5)", () => {
-  test.fixme(
+  test.skip(
     "EOA signs typed-data and the digest is committed on-chain",
     async () => {
       // FIXME deferred: needs funded Base Sepolia EOA (no fixture wallet
@@ -15,7 +15,7 @@ test.describe("Authorize via ECDSA (§13.4 row 5)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "wrong-chain attempt is refused with explicit reason",
     async () => {
       // FIXME deferred: real chain-switch flow needs WalletConnect + dapp
@@ -23,7 +23,7 @@ test.describe("Authorize via ECDSA (§13.4 row 5)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "after broadcast, the authorization shows up in /positions",
     async () => {
       // FIXME deferred: needs broadcast + indexer round-trip.

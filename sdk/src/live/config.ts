@@ -101,6 +101,11 @@ export interface WstdiemSdkConfig {
    * the on-chain validator will reject for missing evidence. PR-14 audit
    * M-4 closure. */
   evidenceResolver?: import("./evidence-resolver.js").EvidenceResolver;
+  /**
+   * D-4: when true, use placeholder evidence values (unit tests without venue
+   * RPC depth). Default false — production uses createLiveEvidenceResolver.
+   */
+  preferPlaceholderEvidence?: boolean;
 }
 
 export interface WstdiemContractAddresses {

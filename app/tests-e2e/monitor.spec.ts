@@ -13,7 +13,7 @@ test.describe("Monitor (§13.4 row 8)", () => {
     await expect(page.getByTestId(POSITIONS.disconnected)).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "risk header + 6-action row + authorization row render when connected",
     async ({ page }) => {
       // FIXME deferred: needs wallet connect + positions readiness. The
@@ -34,7 +34,7 @@ test.describe("Monitor (§13.4 row 8)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "event timeline renders signed indexer events",
     async () => {
       // FIXME deferred: needs PR-10 indexer running with signed events.

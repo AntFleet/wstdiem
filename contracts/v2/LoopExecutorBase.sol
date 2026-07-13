@@ -266,17 +266,11 @@ abstract contract LoopExecutorBase is ILoopV1Events {
         _tstore(WSTDIEM_REENTRANCY_SLOT, bytes32(0));
     }
 
-    function _approveExact(address token, address spender, uint256 amount) internal {
-        _approveExact(token, spender, amount, type(uint8).max);
-    }
-
-    /// @notice Exact allowance with optional registry spender allowlist enforcement.
-    /// @dev Pass `primaryType` from the live action context. `type(uint8).max` skips the check
-    ///      only for legacy internal paths; production callbacks must pass the real primaryType.
+    /// @notice Exact allowance with registry spender allowlist enforcement (D-3 always-on).
+    /// @dev Callers MUST pass the live action `primaryType`. The legacy 3-arg overload that
+    ///      skipped the check via `type(uint8).max` was removed — no production path may bypass.
     function _approveExact(address token, address spender, uint256 amount, uint8 primaryType) internal {
-        if (primaryType != type(uint8).max) {
-            _requireAllowedSpender(primaryType, token, spender);
-        }
+        _requireAllowedSpender(primaryType, token, spender);
         _safeApprove(token, spender, 0);
         _safeApprove(token, spender, amount);
     }
@@ -284,10 +278,12 @@ abstract contract LoopExecutorBase is ILoopV1Events {
     function _requireAllowedSpender(uint8 primaryType, address token, address spender) internal view {
         if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
         ILoopRegistry.SpenderCheck memory check = loopRegistry.allowedSpender(primaryType, token, spender);
-        // Production: spendAllowlistEnforced requires every spender row to be registered.
-        // Unit harnesses leave the flag false and may omit allowlist rows.
+        // D-3: enforced flag OR post-bootstrap always requires a registered row.
+        // Pre-bootstrap unit harnesses may leave the flag false and omit rows.
         if (check.spender == address(0)) {
-            if (loopRegistry.spendAllowlistEnforced()) revert LoopV1Errors.SpenderNotRegistered();
+            if (loopRegistry.spendAllowlistEnforced() || loopRegistry.bootstrapClosed()) {
+                revert LoopV1Errors.SpenderNotRegistered();
+            }
             return;
         }
         if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();

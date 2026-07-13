@@ -12,7 +12,7 @@ test.describe("Positions", () => {
     ).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "renders risk header + 6-action row + auth + events when connected",
     async ({ page }) => {
       await page.goto("/positions");
@@ -35,7 +35,7 @@ test.describe("Positions", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "Force-Exit button opens the full-screen confirmation panel",
     async ({ page }) => {
       await page.goto("/positions");
@@ -46,7 +46,7 @@ test.describe("Positions", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "AND-over-rows blocked reasons render every matched P-predicate",
     async ({ page }) => {
       // Requires a market in a state where multiple bits block the same

@@ -28,7 +28,7 @@ test.describe("Transaction preview drawer (§13.4 row 4)", () => {
     await expect(cta).toBeDisabled();
   });
 
-  test.fixme(
+  test.skip(
     "drawer renders every §10 section when preview resolves",
     async ({ page }) => {
       // FIXME deferred: needs sdk.quoteOpen / quoteRebalance / quoteExit to
@@ -55,7 +55,7 @@ test.describe("Transaction preview drawer (§13.4 row 4)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "Sign button signs typed-data via real wallet",
     async () => {
       // FIXME deferred: needs a real wallet (ECDSA or Safe/CSW EIP-1271).

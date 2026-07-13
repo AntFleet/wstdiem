@@ -293,7 +293,9 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         emit RegistryConfigBatchCancelled(version, root, msg.sender);
     }
 
+    /// @notice Toggle spend allowlist enforcement. After bootstrap, cannot disable (D-3).
     function setSpendAllowlistEnforced(bool enforced) external onlyOwner {
+        if (bootstrapClosed && !enforced) revert ProductionReadinessFailed("spendAllowlistLocked");
         spendAllowlistEnforced = enforced;
         emit SpendAllowlistEnforcementChanged(enforced);
     }

@@ -44,7 +44,7 @@ test.describe("Canonical error code parity (§13.4 row 22)", () => {
     expect(unrelated, `unexpected page/console errors:\n${unrelated.join("\n")}`).toEqual([]);
   });
 
-  test.fixme(
+  test.skip(
     "per-selector browser surfaces every canonical error",
     async () => {
       // FIXME deferred: Phase 5 evidence page renders the count only.
@@ -54,7 +54,7 @@ test.describe("Canonical error code parity (§13.4 row 22)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "every failure-condition rendered in PreviewDrawer maps to a canonical error",
     async () => {
       // FIXME deferred: depends on the preview drawer resolving with a

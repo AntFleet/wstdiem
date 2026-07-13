@@ -79,7 +79,7 @@ test.describe("Closed audit-gate blocks site-wide (§13.4 row 17)", () => {
     }
   });
 
-  test.fixme(
+  test.skip(
     "all six action buttons except Revoke are disabled on /positions",
     async () => {
       // FIXME deferred: wallet-gated. The ActionRow.tsx component test

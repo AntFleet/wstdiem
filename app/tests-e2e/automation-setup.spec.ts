@@ -13,7 +13,7 @@ test.describe("Configure automation (§13.4 row 9)", () => {
     await expect(page.getByTestId(AUTOMATION.disconnected)).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "PolicyEditor + LivePolicies render when connected",
     async ({ page }) => {
       // FIXME deferred: needs wallet connect.
@@ -23,7 +23,7 @@ test.describe("Configure automation (§13.4 row 9)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "selecting FORCE_EXIT policy class reveals acknowledged-risks checklist",
     async ({ page }) => {
       // FIXME deferred: needs PolicyEditor mounted (which needs wallet
@@ -39,7 +39,7 @@ test.describe("Configure automation (§13.4 row 9)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "Sign policy signs AutomationExec digest via real wallet",
     async () => {
       // FIXME deferred: needs real wallet sign flow.

@@ -34,6 +34,7 @@ import {
   type PublicClient,
 } from "viem";
 import { createCanonicalEvidenceResolver } from "./canonical-evidence-resolver.js";
+import { createLiveEvidenceResolver } from "./live-evidence-resolver.js";
 import {
   assertForceExitRisksCoverRequired,
   forceExitBlockedByMultiCritical,
@@ -323,13 +324,25 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       ? this.rpcQuorum.asPublicClient()
       : config.publicClient;
     this.registry = new RegistryReader(this.readClient, config.contracts.loopRegistry);
-    // When no evidenceResolver is supplied, install the registry-canonical
-    // default so build*Params / digests still populate required source sets
-    // once the on-chain requiredEvidenceSourceSet is non-empty (deploy A).
+    // When no evidenceResolver is supplied:
+    //   - preferPlaceholderEvidence → lightweight FRESH placeholders (tests)
+    //   - otherwise live venue resolver (D-4 richer values); on RPC failure
+    //     individual sources fall back to bound placeholders inside the live
+    //     resolver. Production apps should leave preferPlaceholderEvidence unset.
     if (!this.config.evidenceResolver) {
+      const preferPlaceholder =
+        this.config.preferPlaceholderEvidence === true ||
+        // Single-client test harnesses typically lack full venue mocks.
+        (this.config.allowSingleClientReads === true &&
+          this.config.preferPlaceholderEvidence !== false);
       this.config = {
         ...this.config,
-        evidenceResolver: createCanonicalEvidenceResolver(this.registry),
+        evidenceResolver: preferPlaceholder
+          ? createCanonicalEvidenceResolver(this.registry)
+          : createLiveEvidenceResolver({
+              registry: this.registry,
+              client: this.readClient,
+            }),
       };
     }
     this.authorization = new AuthorizationReader(
@@ -401,11 +414,15 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     const rpcQuorum = await this.evaluateRpcQuorum();
     const singleClientAllowed = this.config.allowSingleClientReads === true;
     if ((!this.rpcQuorum && !singleClientAllowed) || (this.rpcQuorum && rpcQuorum.status !== "ok")) {
-      const currentBlockEarly = await (
-        this.rpcQuorum
-          ? this.config.publicClient.getBlockNumber()
-          : this.readClient.getBlockNumber()
-      );
+      // D-8: prefer quorum-wrapped readClient for blockNumber even on the
+      // short-circuit path; only fall back to single publicClient when
+      // quorum is unavailable (and single-client was already allowed).
+      let currentBlockEarly: bigint;
+      try {
+        currentBlockEarly = await this.readClient.getBlockNumber();
+      } catch {
+        currentBlockEarly = await this.config.publicClient.getBlockNumber();
+      }
       // PR-17 Gap 2: even in the short-circuit blocked path, surface the
       // G-PM gate evaluation so the consumer sees G-PM-3 fail with
       // RpcQuorumDegraded (rather than the empty `gateStatuses: []` that
@@ -1510,17 +1527,121 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     transaction: { to: Address; data: Hex };
   }> {
     const to = this.config.contracts.loopAuthorization;
-    const data =
-      typeof target === "bigint"
-        ? encodeFunctionData({
-            abi: [
-              { type: "function", name: "revoke", inputs: [{ type: "uint64" }], outputs: [], stateMutability: "nonpayable" },
-            ] as const,
-            functionName: "revoke",
-            args: [target],
-          }) as Hex
-        : ("0x" as Hex);
-    return { typedData: { target }, transaction: { to, data } };
+    // D-5: policyId → owner-direct revoke(uint64). ActionDigest must not
+    // return empty calldata — require an explicit cancelNonce envelope or
+    // use buildRevokeTransaction for signed executeRevoke.
+    if (typeof target === "bigint") {
+      const data = encodeFunctionData({
+        abi: [
+          {
+            type: "function",
+            name: "revoke",
+            inputs: [{ type: "uint64" }],
+            outputs: [],
+            stateMutability: "nonpayable",
+          },
+        ] as const,
+        functionName: "revoke",
+        args: [target],
+      }) as Hex;
+      return { typedData: { target }, transaction: { to, data } };
+    }
+    throw new Error(
+      "revokeAuthorization(ActionDigest) is unsupported — use revokeAuthorization(policyId) " +
+        "for owner-direct revoke, or buildRevokeExecuteTransaction() for signed executeRevoke.",
+    );
+  }
+
+  /**
+   * D-5: encode LoopAuthorization.executeRevoke(digest, sig, action) for a
+   * pre-signed Revoke envelope. Does not re-sign; caller attaches `signature`.
+   */
+  async buildRevokeExecuteTransaction(args: {
+    digest: Hex;
+    signature: Hex;
+    action: {
+      identity: unknown;
+      freshness: unknown;
+      executionKind: number;
+      bounds: { policyId: bigint; policyClass: number; effectiveBlock: bigint };
+      hashes: unknown;
+    };
+  }): Promise<{ to: Address; data: Hex; value: 0n; digest: Hex }> {
+    const data = encodeFunctionData({
+      abi: [
+        {
+          type: "function",
+          name: "executeRevoke",
+          inputs: [
+            { name: "digest", type: "bytes32" },
+            { name: "sig", type: "bytes" },
+            {
+              name: "action",
+              type: "tuple",
+              components: [
+                {
+                  name: "identity",
+                  type: "tuple",
+                  components: [
+                    { name: "owner", type: "address" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "executor", type: "address" },
+                    { name: "market", type: "bytes32" },
+                    { name: "verifyingContract", type: "address" },
+                    { name: "registryVersion", type: "uint256" },
+                    { name: "registryMerkleRoot", type: "bytes32" },
+                    { name: "policyId", type: "uint64" },
+                    { name: "nonceSlot", type: "uint248" },
+                    { name: "nonceBit", type: "uint8" },
+                  ],
+                },
+                {
+                  name: "freshness",
+                  type: "tuple",
+                  components: [
+                    { name: "quoteBlockNumber", type: "uint256" },
+                    { name: "maxQuoteAgeBlocks", type: "uint256" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "maxRpcBlockLag", type: "uint16" },
+                  ],
+                },
+                { name: "executionKind", type: "uint8" },
+                {
+                  name: "bounds",
+                  type: "tuple",
+                  components: [
+                    { name: "policyId", type: "uint64" },
+                    { name: "policyClass", type: "uint8" },
+                    { name: "effectiveBlock", type: "uint256" },
+                  ],
+                },
+                {
+                  name: "hashes",
+                  type: "tuple",
+                  components: [
+                    { name: "evidenceBundleHash", type: "bytes32" },
+                    { name: "actionId", type: "bytes32" },
+                    { name: "evidenceSetId", type: "bytes32" },
+                    { name: "reserved0", type: "bytes32" },
+                    { name: "reserved1", type: "bytes32" },
+                  ],
+                },
+              ],
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+      ] as const,
+      functionName: "executeRevoke",
+      args: [args.digest, args.signature, args.action as never],
+    }) as Hex;
+    return {
+      to: this.config.contracts.loopAuthorization,
+      data,
+      value: 0n,
+      digest: args.digest,
+    };
   }
 
   // ─── T2a: envelope derivation from friendly inputs ──────────────────────

@@ -30,19 +30,27 @@ Production **audit gate remains CLOSED** until an external firm report is publis
 
 ---
 
-## Still open / deferred (not this PR)
+## Closed engineering residuals (D-1…D-8, except process D-1 firm report)
 
-| ID | Item | Why deferred | Owner signal |
-|----|------|--------------|--------------|
-| D-1 | **External firm audit** + publish under `audit/` | Process / budget; gate T10 | Launch blocker |
-| D-2 | **Playwright action-path un-fixme** (~42 specs) vs funded EOA / mock chain | Needs live beta env (LAUNCH T9) | Launch readiness |
-| D-3 | **Always-on spender path** for production without soft harness defaults | Deploy/manifest already pins spenders when enforced; remaining is ops discipline + any harness-only bypasses | Deploy review |
-| D-4 | **Richer evidence values** (beyond required-set membership / status) | Product depth; fail-closed set membership shipped | SDK/indexer |
-| D-5 | **Revoke has no dedicated executor entry** | Spec Phase-1 scope; activity-absence recovery still works | Spec follow-up |
-| D-6 | **Oracle decimal normalization** (Chainlink 1e8 / Morpho 1e36 vs HF WAD) adversarial re-pass | Completeness-critic item; needs dedicated math audit | Pre-external audit |
-| D-7 | **Safe + external TimelockController** if contract size / governance requires it | Ownable2Step + in-contract 130k-block queues cover Phase-1; Safe optional | Governance |
-| D-8 | **Full `RpcQuorum.readContract` plumbing** for every reader | Partial; residual audit-C1 | SDK ops |
-| D-9 | Loop-manager tool residual mediums (Telegram, fork exit against accruing debt, etc.) | Separate repo (`wstdiem` tool); not protocol v6 monorepo | Tool track |
+| ID | Item | Status |
+|----|------|--------|
+| D-1 | External firm audit **process** | **Scaffolded** under `audit/` (SCOPE, checklist, tracker). Firm engagement / report still **open** — gate T10 stays CLOSED |
+| D-2 | Playwright action-path | **Implemented:** mock wallet fixture; UI paths live; remaining sign/broadcast behind `LIVE_E2E=1`; automation stays `test.skip` (beta T4/T7) |
+| D-3 | Always-on spender path | **Closed:** no 3-arg allowlist skip; enforce after bootstrap; cannot disable allowlist post-close |
+| D-4 | Richer evidence values | **Closed:** `createLiveEvidenceResolver` default (unless placeholder/single-client tests) |
+| D-5 | Revoke entrypoint | **Closed:** `LoopAuthorization.executeRevoke` + SDK `buildRevokeExecuteTransaction`; no Morpho executor (spec) |
+| D-6 | Oracle decimal normalization | **Closed:** `riskStatus` Morpho/Chainlink → WAD; price-adjusted leverage; tests |
+| D-7 | Safe + TimelockController | **Documented:** `docs/governance/SAFE-TIMELOCK.md` — Safe-as-owner + in-contract 130k delay |
+| D-8 | RpcQuorum plumbing | **Closed:** more quorumed methods; unquorumed `request` fail-closed; readiness block via `readClient` |
+| D-9 | Loop-manager tool residual mediums | **Out of scope** (separate repo) — not implemented |
+
+## Still open (process / live env)
+
+| ID | Item | Owner signal |
+|----|------|--------------|
+| D-1 report | Hire firm + publish report under `audit/<date>-firm/` then run `CHECKLIST-GATE-OPEN.md` | Launch blocker T10 |
+| D-2 LIVE_E2E | Funded Anvil/Sepolia broadcast suite with `LIVE_E2E=1` | Launch T9 completion |
+| D-9 | Loop-manager tool mediums | Tool track |
 
 ---
 

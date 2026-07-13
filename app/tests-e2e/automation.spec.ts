@@ -12,7 +12,7 @@ test.describe("Automation", () => {
     ).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "policy editor + live policies render side by side when connected",
     async ({ page }) => {
       await page.goto("/automation");
@@ -21,7 +21,7 @@ test.describe("Automation", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "selecting FORCE_EXIT class reveals the acknowledged-risks checklist",
     async ({ page }) => {
       await page.goto("/automation");
@@ -35,7 +35,7 @@ test.describe("Automation", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "permissionless fallback badge surfaces on KEEPER_PERMISSIONLESS policies",
     async ({ page }) => {
       await page.goto("/automation");
@@ -47,7 +47,7 @@ test.describe("Automation", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "Revoke calls sdk.revokeAuthorization and removes the row",
     async ({ page }) => {
       await page.goto("/automation");

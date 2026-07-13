@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 
 import {ILoopRegistry} from "../../../contracts/v2/interfaces/ILoopRegistry.sol";
+import {ILoopRiskOracleAdapter} from "../../../contracts/v2/interfaces/ILoopRiskOracleAdapter.sol";
 import {EmergencyGuardian} from "../../../contracts/v2/EmergencyGuardian.sol";
 import {LoopAuthorization} from "../../../contracts/v2/LoopAuthorization.sol";
 import {LoopExecutorV2} from "../../../contracts/v2/LoopExecutorV2.sol";
@@ -73,6 +74,26 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         (, uint128 debtAfter, uint128 collateralAfter) = mocks.morpho.position(market, owner);
         assertEq(uint256(debtAfter), 0, "shares cleared");
         assertEq(uint256(collateralAfter), 0, "collateral cleared");
+    }
+
+    function testSpendAllowlistCannotDisableAfterBootstrap() public {
+        assertTrue(registry.bootstrapClosed());
+        assertTrue(registry.spendAllowlistEnforced());
+        vm.expectRevert(
+            abi.encodeWithSelector(LoopRegistry.ProductionReadinessFailed.selector, bytes32("spendAllowlistLocked"))
+        );
+        registry.setSpendAllowlistEnforced(false);
+    }
+
+    function testRiskStatusOraclePricesAreWad() public {
+        // Morpho mock uses 1e18; riskStatus must still report WAD-scale morpho price.
+        mocks.morphoOracle.setPrice(1e18);
+        ILoopRiskOracleAdapter.RiskStatus memory status = riskOracle.riskStatus(market);
+        assertEq(status.morphoOraclePriceWad, 1e18, "1e18 mock stays WAD");
+
+        mocks.morphoOracle.setPrice(1e36);
+        status = riskOracle.riskStatus(market);
+        assertEq(status.morphoOraclePriceWad, 1e18, "1e36 Morpho scale normalizes to WAD");
     }
 
     function testOraclePriceNormalizationMorphoScale() public {

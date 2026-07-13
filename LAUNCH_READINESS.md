@@ -123,9 +123,13 @@ open/exit gates pass. After it lands, point app `VITE_CONTRACT_*` + service `.en
 
 ### P3 — quality gate before public beta
 
-- [ ] **T9. E2e connect→sign→broadcast coverage.** ~42 action-path Playwright specs
-  are `test.fixme`. Un-fixme against a funded test EOA / mock chain.
+- [ ] **T9. E2e connect→sign→broadcast coverage.** Action-path specs use
+  `fixtures/mock-wallet.ts` for connect/account UI; full funded broadcast
+  remains gated on `LIVE_E2E=1` (Anvil or Sepolia mock deploy). Automation /
+  EIP-1271 Safe paths stay deferred with beta scope (T4/T7).
 - [ ] 🔒 **T10. External audit gate closed** (repo's own stated blocker).
+  Process scaffolding lives under `audit/` (`SCOPE.md`, `CHECKLIST-GATE-OPEN.md`).
+  Gate stays closed until a firm report is published there — scaffolding ≠ audit.
 
 ---
 

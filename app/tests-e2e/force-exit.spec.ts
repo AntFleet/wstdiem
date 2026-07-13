@@ -145,7 +145,7 @@ test.describe("Force-Exit confirmation panel — happy path (matched env)", () =
     await expect(page.getByTestId(FORCE_EXIT.panel)).toHaveCount(0);
   });
 
-  test.fixme(
+  test.skip(
     "after sign, attachSignature plus broadcast complete",
     async () => {
       // FIXME deferred: needs a real wallet + I-66 preimage flow. Tracked

@@ -96,6 +96,8 @@ interface ILoopAuthorization {
     ) external returns (uint64 policyId);
     function updatePolicy(uint64 policyId, bytes32 newPolicyHash, uint256 newExpiryBlock) external;
     function revoke(uint64 policyId) external;
+    /// @notice Signed Revoke digest entrypoint (no Morpho executor — auth-direct).
+    function executeRevoke(bytes32 digest, bytes calldata sig, LoopV1EIP712.Revoke calldata action) external;
     function cancelNonce(uint8 primaryType, uint248 nonceSlot, uint8 nonceBit) external;
     function nonceBitmap(address owner, uint64 policyId, uint8 primaryType, uint248 nonceSlot)
         external
