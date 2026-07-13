@@ -15,6 +15,7 @@ import {LoopV1Types} from "../../../contracts/v2/libraries/LoopV1Types.sol";
 import {DeploymentManifest} from "../../../script/v2/DeploymentManifest.sol";
 import {MockDeploymentKit} from "../../../script/v2/MockDeploymentKit.sol";
 import {DigestBuilder} from "./helpers/DigestBuilder.sol";
+import {EvidenceBuilder} from "./helpers/EvidenceBuilder.sol";
 
 /// @notice Regression suite for the 2026-06-17 trust-root audit slice:
 ///         F01 shares→assets debt, F02 oracle scale, F22 Ownable2Step, F31 spender allowlist,
@@ -101,11 +102,32 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         registry.setHarvestAuthority(address(this));
         registry.recordHarvest(market, block.number, bytes32(uint256(1)));
 
-        LoopV1EIP712.Open memory action = _openAction(9, 1);
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.OPEN), owner, market
+        );
+        LoopV1EIP712.Open memory action = _openAction(9, 1, bundleHash);
         bytes32 digest = auth.openDigest(action);
 
         vm.expectRevert(LoopV1Errors.HarvestConvergencePending.selector);
-        executor.executeOpen(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+        executor.executeOpen(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
+    }
+
+    function testRequiredEvidenceSetsPinned() public view {
+        assertEq(registry.requiredEvidenceSourceSet(uint8(LoopV1Types.PrimaryType.OPEN)).length, 5);
+        assertEq(registry.requiredEvidenceSourceSet(uint8(LoopV1Types.PrimaryType.EXIT)).length, 6);
+        assertEq(registry.requiredEvidenceSourceSet(uint8(LoopV1Types.PrimaryType.FORCE_EXIT)).length, 6);
+    }
+
+    function testStaleEvidenceStatusReverts() public {
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.OPEN), owner, market
+        );
+        evidence.sources[0].status = LoopV1Types.SourceStatus.STALE;
+        bundleHash = EvidenceBuilder.hashBundle(evidence);
+        LoopV1EIP712.Open memory action = _openAction(12, 1, bundleHash);
+        bytes32 digest = auth.openDigest(action);
+        vm.expectRevert(LoopV1Errors.EvidenceStale.selector);
+        executor.executeOpen(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
     }
 
     function testForceExitRequiresCurveDepthWaiverWhenDry() public {
@@ -129,11 +151,14 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         uint16 pauseBit = uint16(1 << uint8(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE));
         assertTrue(bitmap & pauseBit != 0, "pause bit set");
 
-        LoopV1EIP712.Open memory action = _openAction(11, 1);
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.OPEN), owner, market
+        );
+        LoopV1EIP712.Open memory action = _openAction(11, 1, bundleHash);
         bytes32 digest = auth.openDigest(action);
         // Either guardian requireNotPaused or state-bitmap gate fails closed.
         vm.expectRevert();
-        executor.executeOpen(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+        executor.executeOpen(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
     }
 
     function testCriticalRoleRotationRequiresTimelock() public {
@@ -175,21 +200,31 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
     }
 
     function _open(uint248 nonceSlot, uint8 nonceBit) private returns (LoopV1Types.LoopActionResult memory result) {
-        LoopV1EIP712.Open memory action = _openAction(nonceSlot, nonceBit);
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.OPEN), owner, market
+        );
+        LoopV1EIP712.Open memory action = _openAction(nonceSlot, nonceBit, bundleHash);
         bytes32 digest = auth.openDigest(action);
-        result = executor.executeOpen(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+        result = executor.executeOpen(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
     }
 
     function _exit(uint248 nonceSlot, uint8 nonceBit, uint256 collateral)
         private
         returns (LoopV1Types.LoopActionResult memory result)
     {
-        LoopV1EIP712.Exit memory action = _exitAction(nonceSlot, nonceBit, collateral);
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.EXIT), owner, market
+        );
+        LoopV1EIP712.Exit memory action = _exitAction(nonceSlot, nonceBit, collateral, bundleHash);
         bytes32 digest = auth.exitDigest(action);
-        result = executor.executeExit(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+        result = executor.executeExit(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
     }
 
-    function _openAction(uint248 nonceSlot, uint8 nonceBit) private view returns (LoopV1EIP712.Open memory action) {
+    function _openAction(uint248 nonceSlot, uint8 nonceBit, bytes32 evidenceBundleHash)
+        private
+        view
+        returns (LoopV1EIP712.Open memory action)
+    {
         action.identity = _identity(nonceSlot, nonceBit);
         action.freshness = _freshness();
         action.executionKind = LoopV1Types.ExecutionKind.KEEPER_PERMISSIONLESS;
@@ -198,10 +233,10 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         action.bounds.minWstDiemReceived = 1 ether;
         action.bounds.minBorrowedDiem = 1;
         action.bounds.maxBorrowedDiem = MAX_BORROW;
-        action.hashes.evidenceBundleHash = _emptyEvidenceHash();
+        action.hashes.evidenceBundleHash = evidenceBundleHash;
     }
 
-    function _exitAction(uint248 nonceSlot, uint8 nonceBit, uint256 collateral)
+    function _exitAction(uint248 nonceSlot, uint8 nonceBit, uint256 collateral, bytes32 evidenceBundleHash)
         private
         view
         returns (LoopV1EIP712.Exit memory action)
@@ -214,7 +249,7 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         action.bounds.minRepayment = 0;
         action.bounds.maxCollateralSold = collateral;
         action.bounds.repayOnly = false;
-        action.hashes.evidenceBundleHash = _emptyEvidenceHash();
+        action.hashes.evidenceBundleHash = evidenceBundleHash;
     }
 
     function _identity(uint248 nonceSlot, uint8 nonceBit)
@@ -253,28 +288,6 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
             irm: config.market.irm,
             lltv: config.market.lltv
         });
-    }
-
-    function _emptyEvidence() private view returns (LoopV1Types.ActionEvidence memory evidence) {
-        evidence.owner = owner;
-        evidence.market = market;
-        evidence.blockNumber = block.number;
-    }
-
-    function _emptyEvidenceHash() private view returns (bytes32) {
-        LoopV1Types.EvidenceSource[] memory sources = new LoopV1Types.EvidenceSource[](0);
-        return keccak256(
-            abi.encode(
-                LoopV1EIP712.EVIDENCE_BUNDLE_TYPEHASH,
-                bytes32(0),
-                bytes32(0),
-                owner,
-                market,
-                block.number,
-                uint16(0),
-                keccak256(abi.encode(sources))
-            )
-        );
     }
 
     function _sign(uint256 pk, bytes32 digest) private pure returns (bytes memory) {

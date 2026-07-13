@@ -33,6 +33,7 @@ import {
   type Log,
   type PublicClient,
 } from "viem";
+import { createCanonicalEvidenceResolver } from "./canonical-evidence-resolver.js";
 import type {
   Action,
   AutomationExecAction,
@@ -316,6 +317,15 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       ? this.rpcQuorum.asPublicClient()
       : config.publicClient;
     this.registry = new RegistryReader(this.readClient, config.contracts.loopRegistry);
+    // When no evidenceResolver is supplied, install the registry-canonical
+    // default so build*Params / digests still populate required source sets
+    // once the on-chain requiredEvidenceSourceSet is non-empty (deploy A).
+    if (!this.config.evidenceResolver) {
+      this.config = {
+        ...this.config,
+        evidenceResolver: createCanonicalEvidenceResolver(this.registry),
+      };
+    }
     this.authorization = new AuthorizationReader(
       this.readClient,
       config.contracts.loopAuthorization,

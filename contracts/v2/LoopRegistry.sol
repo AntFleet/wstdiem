@@ -233,6 +233,12 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         if (spenderChecks[uint8(LoopV1Types.PrimaryType.OPEN)][params.loanToken][morpho].spender != morpho) {
             revert ProductionReadinessFailed("openMorphoSpender");
         }
+        if (requiredEvidenceSources[uint8(LoopV1Types.PrimaryType.OPEN)].length == 0) {
+            revert ProductionReadinessFailed("openEvidenceSet");
+        }
+        if (requiredEvidenceSources[uint8(LoopV1Types.PrimaryType.EXIT)].length == 0) {
+            revert ProductionReadinessFailed("exitEvidenceSet");
+        }
         // Fingerprints must be applied (validateExternalConfig fail-closed when missing).
         if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.OPEN))) {
             revert ProductionReadinessFailed("openFingerprints");

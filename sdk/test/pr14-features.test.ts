@@ -415,6 +415,9 @@ describe("PR-14: evidence resolver (audit M-4)", () => {
       publicClient: fake.asPublicClient(),
       indexerBaseUrl: "http://indexer.test",
       fetch: fetcher,
+      // Explicit empty resolver: override the default canonical resolver so we
+      // still prove fail-closed when the required set is non-empty but uncovered.
+      evidenceResolver: async () => ({ sources: [] }),
       contracts: {
         loopRegistry: LOOP_REGISTRY,
         loopAuthorization: LOOP_AUTH,
@@ -429,7 +432,7 @@ describe("PR-14: evidence resolver (audit M-4)", () => {
       initialMarkets: [BUNDLE],
     });
     await expect(sdk.buildAuthorization(openTemplate as never)).rejects.toThrow(
-      /requiredEvidenceSourceSet/,
+      /missing required source ids|requiredEvidenceSourceSet/,
     );
   });
 
