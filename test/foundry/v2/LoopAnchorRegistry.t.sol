@@ -63,7 +63,12 @@ contract LoopAnchorRegistryTest is Test {
     }
 
     function testRotationUsesCurrentRegistrySubmitter() public {
+        // F22: rotation after bootstrap must queue + apply after REGISTRY_TIMELOCK_BLOCKS.
         registry.setAnchorSubmitter(NEXT_SUBMITTER);
+        (address pending,) = registry.pendingCriticalRole(registry.ROLE_ANCHOR_SUBMITTER());
+        assertEq(pending, NEXT_SUBMITTER);
+        vm.roll(block.number + 130_000);
+        registry.applyAnchorSubmitter();
 
         vm.prank(SUBMITTER);
         vm.expectRevert(LoopV1Errors.AnchorSubmitterOnly.selector);
@@ -71,6 +76,22 @@ contract LoopAnchorRegistryTest is Test {
 
         vm.prank(NEXT_SUBMITTER);
         anchors.submitStateSnapshot(block.number, bytes32(uint256(2)));
+    }
+
+    function testSubmitWithBlockHashMismatchReverts() public {
+        // Produce a finalized prior block so blockhash(prior) is non-zero and checkable.
+        vm.roll(10);
+        uint256 prior = 9;
+        bytes32 live = blockhash(prior);
+        assertTrue(live != bytes32(0), "foundry must expose prior blockhash");
+
+        vm.prank(SUBMITTER);
+        vm.expectRevert(LoopV1Errors.BlockInconsistent.selector);
+        anchors.submitStateSnapshotWithBlockHash(prior, keccak256("bad-hash"), bytes32(uint256(1)));
+
+        vm.prank(SUBMITTER);
+        anchors.submitStateSnapshotWithBlockHash(prior, live, bytes32(uint256(1)));
+        assertEq(anchors.lastAnchorBlock(), block.number);
     }
 
     function testCadenceBelowFourStillAllowsOneBlockMinimumGap() public {

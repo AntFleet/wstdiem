@@ -818,11 +818,14 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         }
     }
 
-    /// @dev F31: when a SpenderCheck row exists, Morpho must match it (codehash optional).
+    /// @dev F31: when spendAllowlistEnforced or a SpenderCheck row exists, Morpho must be registered.
     function _requireAllowedSpender(uint8 primaryType, address token, address spender) private view {
         if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
         ILoopRegistry.SpenderCheck memory check = registry.allowedSpender(primaryType, token, spender);
-        if (check.spender == address(0)) return;
+        if (check.spender == address(0)) {
+            if (registry.spendAllowlistEnforced()) revert LoopV1Errors.SpenderNotRegistered();
+            return;
+        }
         if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();
         if (check.runtimeCodeHash != bytes32(0)) {
             bytes32 codehash;

@@ -133,9 +133,16 @@ interface ILoopRegistry {
     function setRegistryVersion(uint256 nextVersion) external;
     function setRegistryMerkleRoot(bytes32 nextRoot) external;
     function setIndexerSigningKey(address nextKey) external;
+    function applyIndexerSigningKey() external;
     function setAnchorSubmitter(address nextSubmitter) external;
+    function applyAnchorSubmitter() external;
     function setEmergencyGuardian(address nextGuardian) external;
+    function applyEmergencyGuardian() external;
     function setGovernanceRole(address nextGovernance) external;
+    function applyGovernanceRole() external;
+    function setSpendAllowlistEnforced(bool enforced) external;
+    function spendAllowlistEnforced() external view returns (bool);
+    function pendingCriticalRole(uint8 roleId) external view returns (address next, uint256 effectiveBlock);
     function setAnchorCadenceBlocks(uint64 nextCadenceBlocks) external;
     function setLoopAuthorization(address nextAuthorization) external;
     function setLoopForceExitAuthorizer(address nextAuthorizer) external;

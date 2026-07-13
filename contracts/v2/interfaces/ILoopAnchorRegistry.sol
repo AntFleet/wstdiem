@@ -7,4 +7,6 @@ interface ILoopAnchorRegistry {
     function registry() external view returns (ILoopRegistry);
     function lastAnchorBlock() external view returns (uint64);
     function submitStateSnapshot(uint256 blockNumber, bytes32 manifestHash) external;
+    function submitStateSnapshotWithBlockHash(uint256 blockNumber, bytes32 blockHash, bytes32 manifestHash)
+        external;
 }

@@ -284,10 +284,12 @@ abstract contract LoopExecutorBase is ILoopV1Events {
     function _requireAllowedSpender(uint8 primaryType, address token, address spender) internal view {
         if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
         ILoopRegistry.SpenderCheck memory check = loopRegistry.allowedSpender(primaryType, token, spender);
-        // Unregistered (zero) entries are allowed only when no allowlist row exists yet — unit
-        // harnesses. Once a row is registered for this triple, spender + optional codehash bind.
-        // Production manifests register all executor spenders (see DeploymentManifest + readiness).
-        if (check.spender == address(0)) return;
+        // Production: spendAllowlistEnforced requires every spender row to be registered.
+        // Unit harnesses leave the flag false and may omit allowlist rows.
+        if (check.spender == address(0)) {
+            if (loopRegistry.spendAllowlistEnforced()) revert LoopV1Errors.SpenderNotRegistered();
+            return;
+        }
         if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();
         if (check.runtimeCodeHash != bytes32(0)) {
             bytes32 codehash;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IEmergencyGuardian} from "./interfaces/IEmergencyGuardian.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopRiskOracleAdapter} from "./interfaces/ILoopRiskOracleAdapter.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
@@ -109,7 +110,29 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
         } else if (debt != 0 && collateral == 0) {
             bitmap |= _bit(LoopV1Types.StateBit.MORPHO_OWNER_EVIDENCE_MISSING);
         }
+        // High-tier: fold EmergencyGuardian pause/incident into the live §7.1 bitmap so risk-up
+        // gates in validateLiveStateBitmap see the same surface as requireNotPaused.
+        bitmap |= _guardianBits();
         _requireKnownStateBitmap(bitmap);
+    }
+
+    function _guardianBits() private view returns (uint16 bits) {
+        address guardian = registry.emergencyGuardian();
+        if (guardian == address(0)) return 0;
+        try IEmergencyGuardian(guardian).isPaused(uint8(LoopV1Types.PrimaryType.OPEN)) returns (bool openPaused) {
+            if (openPaused) bits |= _bit(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE);
+        } catch {}
+        try IEmergencyGuardian(guardian).isPaused(uint8(LoopV1Types.PrimaryType.REBALANCE)) returns (bool rebalPaused)
+        {
+            if (rebalPaused) bits |= _bit(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE);
+        } catch {}
+        try IEmergencyGuardian(guardian).incidentState() returns (LoopV1Types.IncidentState incident) {
+            if (incident == LoopV1Types.IncidentState.INVESTIGATING) {
+                bits |= _bit(LoopV1Types.StateBit.INCIDENT_INVESTIGATING);
+            } else if (incident == LoopV1Types.IncidentState.MITIGATING) {
+                bits |= _bit(LoopV1Types.StateBit.INCIDENT_MITIGATING);
+            }
+        } catch {}
     }
 
     function liquidationDistanceBps(bytes32 market, address owner) external view returns (uint16) {

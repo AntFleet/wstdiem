@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 
 import {ILoopRegistry} from "../../../contracts/v2/interfaces/ILoopRegistry.sol";
+import {EmergencyGuardian} from "../../../contracts/v2/EmergencyGuardian.sol";
 import {LoopAuthorization} from "../../../contracts/v2/LoopAuthorization.sol";
 import {LoopExecutorV2} from "../../../contracts/v2/LoopExecutorV2.sol";
 import {LoopRegistry} from "../../../contracts/v2/LoopRegistry.sol";
@@ -117,6 +118,46 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         uint16 bitmap = riskOracle.computeStateBitmap(market, owner);
         uint16 curveBit = uint16(1 << uint8(LoopV1Types.StateBit.CURVE_LIQUIDITY_INSUFFICIENT));
         assertTrue(bitmap & curveBit != 0, "curve bit set when depth empty");
+    }
+
+    function testPauseBitAppearsInLiveBitmap() public {
+        EmergencyGuardian guardian = EmergencyGuardian(deployed.emergencyGuardian);
+        vm.prank(guardian.guardianRole());
+        guardian.pause(uint8(LoopV1Types.PrimaryType.OPEN));
+
+        uint16 bitmap = riskOracle.computeStateBitmap(market, owner);
+        uint16 pauseBit = uint16(1 << uint8(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE));
+        assertTrue(bitmap & pauseBit != 0, "pause bit set");
+
+        LoopV1EIP712.Open memory action = _openAction(11, 1);
+        bytes32 digest = auth.openDigest(action);
+        // Either guardian requireNotPaused or state-bitmap gate fails closed.
+        vm.expectRevert();
+        executor.executeOpen(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+    }
+
+    function testCriticalRoleRotationRequiresTimelock() public {
+        address next = address(0xBEEF);
+        registry.setIndexerSigningKey(next);
+        assertEq(registry.indexerSigningKey(), config.indexerSigningKey, "still old until apply");
+        (address pending, uint256 effective) = registry.pendingCriticalRole(registry.ROLE_INDEXER_SIGNER());
+        assertEq(pending, next);
+        assertGt(effective, block.number);
+
+        vm.expectRevert(LoopV1Errors.FingerprintTimelockNotElapsed.selector);
+        registry.applyIndexerSigningKey();
+
+        vm.roll(effective);
+        registry.applyIndexerSigningKey();
+        assertEq(registry.indexerSigningKey(), next, "rotated after timelock");
+    }
+
+    function testSpendAllowlistEnforcedRejectsUnregistered() public {
+        assertTrue(registry.spendAllowlistEnforced(), "enforced after bootstrap");
+        // Unregistered (primaryType, token, spender) must fail closed under enforcement.
+        ILoopRegistry.SpenderCheck memory missing =
+            registry.allowedSpender(uint8(LoopV1Types.PrimaryType.OPEN), address(0xDEAD), address(0xBEEF));
+        assertEq(missing.spender, address(0));
     }
 
     function testOpenVaultSpenderRegistered() public view {

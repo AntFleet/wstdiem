@@ -17,8 +17,30 @@ contract LoopAnchorRegistry is ILoopAnchorRegistry, ILoopV1Events {
     }
 
     function submitStateSnapshot(uint256 blockNumber, bytes32 manifestHash) external {
+        _submit(blockNumber, bytes32(0), manifestHash, false);
+    }
+
+    /// @notice Submit with blockhash cross-check when the block is still in the EVM window.
+    /// @dev High-tier (2026-06-17): closes blind notarization of stale/reorged indexer heads.
+    function submitStateSnapshotWithBlockHash(uint256 blockNumber, bytes32 blockHash, bytes32 manifestHash)
+        external
+    {
+        _submit(blockNumber, blockHash, manifestHash, true);
+    }
+
+    function _submit(uint256 blockNumber, bytes32 blockHash, bytes32 manifestHash, bool requireHash) private {
         if (msg.sender != registry.anchorSubmitter()) revert LoopV1Errors.AnchorSubmitterOnly();
         if (blockNumber > block.number) revert LoopV1Errors.AnchorInFuture();
+
+        if (requireHash) {
+            if (blockHash == bytes32(0)) revert LoopV1Errors.BlockInconsistent();
+            // blockhash() is only non-zero for the most recent 256 blocks (excluding current).
+            // When the block is still in the window, a missing or mismatched hash is fail-closed.
+            if (block.number > blockNumber && block.number - blockNumber <= 256) {
+                bytes32 live = blockhash(blockNumber);
+                if (live == bytes32(0) || live != blockHash) revert LoopV1Errors.BlockInconsistent();
+            }
+        }
 
         uint64 last = lastAnchorBlock;
         if (last != 0) {

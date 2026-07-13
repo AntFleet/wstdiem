@@ -72,6 +72,13 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     error UnknownBatchOp(uint8 op);
     error EmptyBatch();
     error ProductionReadinessFailed(bytes32 reason);
+    error NoPendingRoleUpdate();
+
+    uint8 public constant ROLE_INDEXER_SIGNER = 1;
+    uint8 public constant ROLE_ANCHOR_SUBMITTER = 2;
+    uint8 public constant ROLE_EMERGENCY_GUARDIAN = 3;
+    uint8 public constant ROLE_GOVERNANCE = 4;
+    uint8 public constant ROLE_HARVEST_AUTHORITY = 5;
 
     uint8 public constant OP_SET_MARKET_PARAMS = 1;
     uint8 public constant OP_SET_CANONICAL_SOURCE = 2;
@@ -164,6 +171,15 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     uint256 private revocationGraceValue;
     uint64 private anchorCadenceBlocksValue;
 
+    struct PendingRole {
+        address next;
+        uint256 effectiveBlock;
+    }
+
+    mapping(uint8 roleId => PendingRole pending) private pendingRoles;
+    /// @dev When true, executor/authorization reject unregistered spenders (production).
+    bool public spendAllowlistEnforced;
+
     constructor(address initialOwner) Ownable(initialOwner) {
         harvestCoolingBlocksValue = 30;
         operatorRecoveryNBlocksValue = 1_296_000;
@@ -203,6 +219,20 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         if (executors[uint8(LoopV1Types.PrimaryType.FORCE_EXIT)] == address(0)) {
             revert ProductionReadinessFailed("forceExitExecutor");
         }
+        if (!spendAllowlistEnforced) revert ProductionReadinessFailed("spendAllowlist");
+        LoopV1Types.MorphoMarketParams memory params = marketParamStore[market];
+        if (params.loanToken == address(0)) revert ProductionReadinessFailed("marketParams");
+        address vault = wstDiemVaults[market];
+        address curve = curvePools[market];
+        if (spenderChecks[uint8(LoopV1Types.PrimaryType.OPEN)][params.loanToken][vault].spender != vault) {
+            revert ProductionReadinessFailed("openVaultSpender");
+        }
+        if (spenderChecks[uint8(LoopV1Types.PrimaryType.EXIT)][params.collateralToken][curve].spender != curve) {
+            revert ProductionReadinessFailed("exitCurveSpender");
+        }
+        if (spenderChecks[uint8(LoopV1Types.PrimaryType.OPEN)][params.loanToken][morpho].spender != morpho) {
+            revert ProductionReadinessFailed("openMorphoSpender");
+        }
         // Fingerprints must be applied (validateExternalConfig fail-closed when missing).
         if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.OPEN))) {
             revert ProductionReadinessFailed("openFingerprints");
@@ -210,6 +240,16 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.EXIT))) {
             revert ProductionReadinessFailed("exitFingerprints");
         }
+    }
+
+    function setSpendAllowlistEnforced(bool enforced) external onlyOwner {
+        spendAllowlistEnforced = enforced;
+        emit SpendAllowlistEnforcementChanged(enforced);
+    }
+
+    function pendingCriticalRole(uint8 roleId) external view returns (address next, uint256 effectiveBlock) {
+        PendingRole storage p = pendingRoles[roleId];
+        return (p.next, p.effectiveBlock);
     }
 
     modifier onlyLoopAuthorization() {
@@ -245,31 +285,59 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     function setIndexerSigningKey(address nextKey) external onlyOwner {
         if (nextKey == address(0)) revert ZeroAddress();
         if (nextKey == anchorSubmitter) revert IndexerEqualsAnchor();
-        address previous = indexerSigningKey;
-        indexerSigningKey = nextKey;
-        emit IndexerSignerRotated(previous, nextKey, block.number);
+        if (indexerSigningKey == address(0)) {
+            _applyIndexerSigningKey(nextKey);
+            return;
+        }
+        _queueRole(ROLE_INDEXER_SIGNER, nextKey);
+    }
+
+    function applyIndexerSigningKey() external onlyOwner {
+        address next = _consumePendingRole(ROLE_INDEXER_SIGNER);
+        if (next == anchorSubmitter) revert IndexerEqualsAnchor();
+        _applyIndexerSigningKey(next);
     }
 
     function setAnchorSubmitter(address nextSubmitter) external onlyOwner {
         if (nextSubmitter == address(0)) revert ZeroAddress();
         if (nextSubmitter == indexerSigningKey) revert IndexerEqualsAnchor();
-        address previous = anchorSubmitter;
-        anchorSubmitter = nextSubmitter;
-        emit AnchorSubmitterRotated(previous, nextSubmitter, block.number);
+        if (anchorSubmitter == address(0)) {
+            _applyAnchorSubmitter(nextSubmitter);
+            return;
+        }
+        _queueRole(ROLE_ANCHOR_SUBMITTER, nextSubmitter);
+    }
+
+    function applyAnchorSubmitter() external onlyOwner {
+        address next = _consumePendingRole(ROLE_ANCHOR_SUBMITTER);
+        if (next == indexerSigningKey) revert IndexerEqualsAnchor();
+        _applyAnchorSubmitter(next);
     }
 
     function setEmergencyGuardian(address nextGuardian) external onlyOwner {
         if (nextGuardian == address(0)) revert ZeroAddress();
-        address previous = emergencyGuardian;
-        emergencyGuardian = nextGuardian;
-        emit RegistryEmergencyGuardianChanged(previous, nextGuardian, block.number);
+        if (emergencyGuardian == address(0)) {
+            _applyEmergencyGuardian(nextGuardian);
+            return;
+        }
+        _queueRole(ROLE_EMERGENCY_GUARDIAN, nextGuardian);
+    }
+
+    function applyEmergencyGuardian() external onlyOwner {
+        _applyEmergencyGuardian(_consumePendingRole(ROLE_EMERGENCY_GUARDIAN));
     }
 
     function setGovernanceRole(address nextGovernance) external onlyOwner {
         if (nextGovernance == address(0)) revert ZeroAddress();
-        address previous = governanceRole;
-        governanceRole = nextGovernance;
-        emit GovernanceRoleChanged(previous, nextGovernance);
+        if (governanceRole == address(0)) {
+            _applyGovernanceRole(nextGovernance);
+            return;
+        }
+        _queueRole(ROLE_GOVERNANCE, nextGovernance);
+    }
+
+    function applyGovernanceRole() external onlyOwner {
+        _applyGovernanceRole(_consumePendingRole(ROLE_GOVERNANCE));
     }
 
     function setAnchorCadenceBlocks(uint64 nextCadenceBlocks) external onlyOwner {
@@ -474,7 +542,61 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     }
 
     function setHarvestAuthority(address nextAuthority) external onlyOwner {
-        harvestAuthority = nextAuthority;
+        if (harvestAuthority == address(0)) {
+            harvestAuthority = nextAuthority;
+            return;
+        }
+        if (nextAuthority == address(0)) revert ZeroAddress();
+        _queueRole(ROLE_HARVEST_AUTHORITY, nextAuthority);
+    }
+
+    function applyHarvestAuthority() external onlyOwner {
+        address next = _consumePendingRole(ROLE_HARVEST_AUTHORITY);
+        address previous = harvestAuthority;
+        harvestAuthority = next;
+        emit CriticalRoleUpdateApplied(ROLE_HARVEST_AUTHORITY, previous, next);
+    }
+
+    function _queueRole(uint8 roleId, address next) private {
+        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        pendingRoles[roleId] = PendingRole(next, effectiveBlock);
+        emit CriticalRoleUpdateQueued(roleId, next, effectiveBlock);
+    }
+
+    function _consumePendingRole(uint8 roleId) private returns (address next) {
+        PendingRole storage pending = pendingRoles[roleId];
+        if (pending.next == address(0)) revert NoPendingRoleUpdate();
+        if (block.number < pending.effectiveBlock) revert LoopV1Errors.FingerprintTimelockNotElapsed();
+        next = pending.next;
+        delete pendingRoles[roleId];
+    }
+
+    function _applyIndexerSigningKey(address nextKey) private {
+        address previous = indexerSigningKey;
+        indexerSigningKey = nextKey;
+        emit IndexerSignerRotated(previous, nextKey, block.number);
+        emit CriticalRoleUpdateApplied(ROLE_INDEXER_SIGNER, previous, nextKey);
+    }
+
+    function _applyAnchorSubmitter(address nextSubmitter) private {
+        address previous = anchorSubmitter;
+        anchorSubmitter = nextSubmitter;
+        emit AnchorSubmitterRotated(previous, nextSubmitter, block.number);
+        emit CriticalRoleUpdateApplied(ROLE_ANCHOR_SUBMITTER, previous, nextSubmitter);
+    }
+
+    function _applyEmergencyGuardian(address nextGuardian) private {
+        address previous = emergencyGuardian;
+        emergencyGuardian = nextGuardian;
+        emit RegistryEmergencyGuardianChanged(previous, nextGuardian, block.number);
+        emit CriticalRoleUpdateApplied(ROLE_EMERGENCY_GUARDIAN, previous, nextGuardian);
+    }
+
+    function _applyGovernanceRole(address nextGovernance) private {
+        address previous = governanceRole;
+        governanceRole = nextGovernance;
+        emit GovernanceRoleChanged(previous, nextGovernance);
+        emit CriticalRoleUpdateApplied(ROLE_GOVERNANCE, previous, nextGovernance);
     }
 
     function lastHarvestBlock(bytes32 market) external view returns (uint256) {

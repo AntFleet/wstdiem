@@ -65,6 +65,7 @@ abstract contract DeployHarness {
         registry.setAnchorSubmitter(config.anchorSubmitter);
         registry.setEmergencyGuardian(address(guardian));
         registry.setGovernanceRole(config.governanceMultisig);
+        registry.setSpendAllowlistEnforced(true);
         // F22: Ownable2Step — two-phase ownership transfer.
         registry.transferOwnership(config.governanceMultisig);
         vm.prank(config.governanceMultisig);

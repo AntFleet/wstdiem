@@ -72,6 +72,7 @@ contract Deploy is Script {
         registry.setAnchorSubmitter(config.anchorSubmitter);
         registry.setEmergencyGuardian(address(guardian));
         registry.setGovernanceRole(config.governanceMultisig);
+        registry.setSpendAllowlistEnforced(true);
 
         _verify(config, deployed, registry, guardian);
         // F22 Ownable2Step: governance must call acceptOwnership() to complete transfer.
