@@ -1,0 +1,36 @@
+name: Indexer Event ABI Parity
+
+on:
+  push:
+    paths:
+      - "indexer/**"
+      - "contracts/v2/**"
+      - ".github/workflows/indexer-event-abi-parity.yml"
+  pull_request:
+    paths:
+      - "indexer/**"
+      - "contracts/v2/**"
+      - ".github/workflows/indexer-event-abi-parity.yml"
+
+jobs:
+  event-abi-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install workspace deps
+        run: npm install --no-audit --no-fund
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Build contracts with forge
+        run: forge build
+      - name: Indexer unit tests
+        run: |
+          cd indexer
+          ../node_modules/.bin/vitest run
+      - name: Event topic0 + indexed-flag parity vs forge
+        run: node indexer/scripts/event-abi-parity.mjs out

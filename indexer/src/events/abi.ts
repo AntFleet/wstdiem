@@ -1,8 +1,10 @@
 /**
  * ABI fragments for the events the indexer subscribes to.
  *
- * Sourced from `contracts/v2/interfaces/ILoopV1Events.sol`. Kept as a literal AbiEvent[]
- * so viem's decodeEventLog can match on topic0.
+ * Canonical shapes from `contracts/v2/interfaces/ILoopV1Events.sol`.
+ * topic0 is keccak256 of the type signature only; **indexed flags must also
+ * match** forge artifacts so decodeEventLog succeeds on live logs.
+ * Guarded by `scripts/event-abi-parity.mjs` + CI.
  */
 import type { AbiEvent } from "viem";
 
@@ -11,14 +13,13 @@ export const LOOP_ACTION_STEP: AbiEvent = {
   name: "LoopActionStep",
   inputs: [
     { name: "owner", type: "address", indexed: true },
-    { name: "primaryType", type: "uint8", indexed: true },
+    { name: "market", type: "bytes32", indexed: true },
     { name: "actionId", type: "bytes32", indexed: true },
-    { name: "digest", type: "bytes32", indexed: false },
-    { name: "stepKind", type: "uint8", indexed: false },
-    { name: "stepIndex", type: "uint16", indexed: false },
-    { name: "logIndexLow", type: "uint16", indexed: false },
-    { name: "logIndexHigh", type: "uint16", indexed: false },
-    { name: "payload", type: "bytes", indexed: false },
+    { name: "stepIndex", type: "uint8", indexed: false },
+    { name: "primaryType", type: "uint8", indexed: false },
+    { name: "target", type: "address", indexed: false },
+    { name: "selector", type: "bytes4", indexed: false },
+    { name: "terminal", type: "bool", indexed: false },
   ],
 };
 
@@ -30,7 +31,6 @@ export const POLICY_CREATED: AbiEvent = {
     { name: "policyId", type: "uint64", indexed: true },
     { name: "primaryType", type: "uint8", indexed: true },
     { name: "policyHash", type: "bytes32", indexed: false },
-    { name: "policyClass", type: "uint8", indexed: false },
     { name: "expiryBlock", type: "uint256", indexed: false },
   ],
 };
@@ -41,8 +41,7 @@ export const POLICY_UPDATED: AbiEvent = {
   inputs: [
     { name: "owner", type: "address", indexed: true },
     { name: "policyId", type: "uint64", indexed: true },
-    { name: "primaryType", type: "uint8", indexed: false },
-    { name: "previousPolicyHash", type: "bytes32", indexed: false },
+    { name: "oldPolicyHash", type: "bytes32", indexed: false },
     { name: "newPolicyHash", type: "bytes32", indexed: false },
     { name: "expiryBlock", type: "uint256", indexed: false },
   ],
@@ -71,10 +70,10 @@ export const REGISTRY_CONFIG_BATCH_COMMITTED: AbiEvent = {
   type: "event",
   name: "RegistryConfigBatchCommitted",
   inputs: [
-    { name: "registryVersion", type: "uint256", indexed: false },
-    { name: "merkleRoot", type: "bytes32", indexed: false },
-    { name: "committer", type: "address", indexed: false },
-    { name: "opCount", type: "uint16", indexed: false },
+    { name: "version", type: "uint256", indexed: true },
+    { name: "root", type: "bytes32", indexed: true },
+    { name: "committer", type: "address", indexed: true },
+    { name: "opsCount", type: "uint16", indexed: false },
   ],
 };
 

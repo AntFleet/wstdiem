@@ -129,6 +129,16 @@ interface ILoopRegistry {
     function setUniswapV3FlashFeeTier(bytes32 market, uint24 nextFeeTier) external;
     function setLoopRiskOracleAdapter(address nextAdapter) external;
     function batchUpdate(BatchOp[] calldata ops, uint256 nextVersion, bytes32 nextRoot) external;
+    /// @notice One-way close of the bootstrap window. After this, batchUpdate queues under timelock.
+    function closeBootstrap() external;
+    function bootstrapClosed() external view returns (bool);
+    /// @notice Apply a previously queued batch after REGISTRY_TIMELOCK_BLOCKS; ops must match queue hash.
+    function applyBatchUpdate(BatchOp[] calldata ops) external;
+    function cancelPendingBatch() external;
+    function pendingBatchUpdate()
+        external
+        view
+        returns (bytes32 opsHash, uint256 nextVersion, bytes32 nextRoot, uint256 effectiveBlock, uint16 opCount);
 
     function setRegistryVersion(uint256 nextVersion) external;
     function setRegistryMerkleRoot(bytes32 nextRoot) external;

@@ -116,6 +116,8 @@ abstract contract MockDeploymentKit is CommonBase {
         registry.setPermissionlessCallerAllowed(deployed.executorV2, true);
         // High-tier: hard spender allowlist for production-shaped deploys/tests.
         registry.setSpendAllowlistEnforced(true);
+        // Post-bootstrap: freeze immediate batchUpdate; further config needs queue+timelock.
+        registry.closeBootstrap();
         // 2026-06-17 deploy fail-closed: refuse incomplete bootstrap wiring.
         registry.assertProductionReadiness(mocks.marketId);
     }

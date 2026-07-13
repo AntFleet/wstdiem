@@ -73,6 +73,10 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     error EmptyBatch();
     error ProductionReadinessFailed(bytes32 reason);
     error NoPendingRoleUpdate();
+    error BootstrapAlreadyClosed();
+    error BootstrapStillOpen();
+    error NoPendingBatch();
+    error PendingBatchMismatch();
 
     uint8 public constant ROLE_INDEXER_SIGNER = 1;
     uint8 public constant ROLE_ANCHOR_SUBMITTER = 2;
@@ -180,6 +184,20 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     /// @dev When true, executor/authorization reject unregistered spenders (production).
     bool public spendAllowlistEnforced;
 
+    /// @dev While false, `batchUpdate` applies immediately (deploy/bootstrap). After
+    ///      `closeBootstrap()`, batches queue for REGISTRY_TIMELOCK_BLOCKS then `applyBatchUpdate`.
+    bool public bootstrapClosed;
+
+    struct PendingBatch {
+        bytes32 opsHash;
+        uint256 nextVersion;
+        bytes32 nextRoot;
+        uint256 effectiveBlock;
+        uint16 opCount;
+    }
+
+    PendingBatch private pendingBatch;
+
     constructor(address initialOwner) Ownable(initialOwner) {
         harvestCoolingBlocksValue = 30;
         operatorRecoveryNBlocksValue = 1_296_000;
@@ -246,6 +264,33 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.EXIT))) {
             revert ProductionReadinessFailed("exitFingerprints");
         }
+        // Immediate batchUpdate must no longer be available for production.
+        if (!bootstrapClosed) revert ProductionReadinessFailed("bootstrapOpen");
+    }
+
+    /// @notice Irreversibly end the bootstrap window. Fingerprint apply + initial wiring first.
+    function closeBootstrap() external onlyOwner {
+        if (bootstrapClosed) revert BootstrapAlreadyClosed();
+        bootstrapClosed = true;
+        emit BootstrapClosed(block.number);
+    }
+
+    function pendingBatchUpdate()
+        external
+        view
+        returns (bytes32 opsHash, uint256 nextVersion, bytes32 nextRoot, uint256 effectiveBlock, uint16 opCount)
+    {
+        PendingBatch storage p = pendingBatch;
+        return (p.opsHash, p.nextVersion, p.nextRoot, p.effectiveBlock, p.opCount);
+    }
+
+    function cancelPendingBatch() external onlyOwner {
+        PendingBatch storage p = pendingBatch;
+        if (p.effectiveBlock == 0) revert NoPendingBatch();
+        uint256 version = p.nextVersion;
+        bytes32 root = p.nextRoot;
+        delete pendingBatch;
+        emit RegistryConfigBatchCancelled(version, root, msg.sender);
     }
 
     function setSpendAllowlistEnforced(bool enforced) external onlyOwner {
@@ -268,9 +313,41 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         _;
     }
 
+    /// @notice Commit a config batch. Immediate while bootstrap is open; queues under timelock after close.
     function batchUpdate(BatchOp[] calldata ops, uint256 nextVersion, bytes32 nextRoot) external onlyOwner {
         if (ops.length == 0) revert EmptyBatch();
         if (nextVersion <= registryVersion) revert NonMonotonicRegistryVersion();
+        if (!bootstrapClosed) {
+            _commitBatch(ops, nextVersion, nextRoot);
+            return;
+        }
+        // Post-bootstrap: queue only; caller must re-supply identical ops to applyBatchUpdate.
+        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        pendingBatch = PendingBatch({
+            opsHash: keccak256(abi.encode(ops)),
+            nextVersion: nextVersion,
+            nextRoot: nextRoot,
+            effectiveBlock: effectiveBlock,
+            opCount: uint16(ops.length)
+        });
+        emit RegistryConfigBatchQueued(nextVersion, nextRoot, msg.sender, uint16(ops.length), effectiveBlock);
+    }
+
+    /// @notice Apply a queued batch after the registry timelock. `ops` must hash-match the queue.
+    function applyBatchUpdate(BatchOp[] calldata ops) external onlyOwner {
+        if (!bootstrapClosed) revert BootstrapStillOpen();
+        PendingBatch memory pending = pendingBatch;
+        if (pending.effectiveBlock == 0) revert NoPendingBatch();
+        if (block.number < pending.effectiveBlock) revert LoopV1Errors.FingerprintTimelockNotElapsed();
+        if (ops.length != pending.opCount) revert PendingBatchMismatch();
+        if (keccak256(abi.encode(ops)) != pending.opsHash) revert PendingBatchMismatch();
+        // Monotonicity: reject if another path advanced version (should not happen without apply).
+        if (pending.nextVersion <= registryVersion) revert NonMonotonicRegistryVersion();
+        delete pendingBatch;
+        _commitBatch(ops, pending.nextVersion, pending.nextRoot);
+    }
+
+    function _commitBatch(BatchOp[] calldata ops, uint256 nextVersion, bytes32 nextRoot) private {
         for (uint256 i = 0; i < ops.length; i++) {
             _dispatch(ops[i]);
         }
