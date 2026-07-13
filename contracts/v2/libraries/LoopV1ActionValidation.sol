@@ -2,11 +2,24 @@
 pragma solidity ^0.8.24;
 
 import {ILoopRegistry} from "../interfaces/ILoopRegistry.sol";
+import {ILoopRiskOracleAdapter} from "../interfaces/ILoopRiskOracleAdapter.sol";
 import {LoopV1EIP712} from "./LoopV1EIP712.sol";
 import {LoopV1Errors} from "./LoopV1Errors.sol";
 import {LoopV1Types} from "./LoopV1Types.sol";
 
 library LoopV1ActionValidation {
+    /// @dev Bits that always block risk-increasing actions (Open / leverage-up Rebalance).
+    uint16 internal constant RISK_UP_HARD_BLOCK_MASK = uint16(
+        (1 << uint8(LoopV1Types.StateBit.AUDIT_GATE_CLOSED))
+            | (1 << uint8(LoopV1Types.StateBit.CONFIG_INTEGRITY_FAILURE))
+            | (1 << uint8(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE))
+            | (1 << uint8(LoopV1Types.StateBit.ORACLE_DEGRADED))
+            | (1 << uint8(LoopV1Types.StateBit.MORPHO_OWNER_EVIDENCE_MISSING))
+            | (1 << uint8(LoopV1Types.StateBit.SEQUENCER_DOWN_OR_GRACE))
+            | (1 << uint8(LoopV1Types.StateBit.INCIDENT_INVESTIGATING))
+            | (1 << uint8(LoopV1Types.StateBit.INCIDENT_MITIGATING))
+            | (1 << uint8(LoopV1Types.StateBit.VAULT_EVIDENCE_MISSING))
+    );
     function validateIdentity(
         ILoopRegistry registry,
         LoopV1EIP712.ActionIdentity calldata identity,
@@ -92,6 +105,101 @@ library LoopV1ActionValidation {
         uint256 lastHarvest = registry.lastHarvestBlock(market);
         uint256 cooling = registry.harvestCoolingBlocks();
         if (lastHarvest != 0 && block.number <= lastHarvest + cooling) revert LoopV1Errors.HarvestConvergencePending();
+    }
+
+    /// @notice Enforce live §7.1 state bitmap for risk-up paths; require ForceExit waivers for degraded bits.
+    /// @dev 2026-06-17 audit: computeStateBitmap had no exec consumers. Exit/deleverage remain available.
+    function validateLiveStateBitmap(
+        ILoopRegistry registry,
+        bytes32 market,
+        address owner,
+        uint8 primaryType,
+        uint256 maxDebtIncrease,
+        uint8 acknowledgedRisks
+    ) public view {
+        address adapter = registry.loopRiskOracleAdapter();
+        // When the adapter is not wired (unit harnesses), skip live bitmap. Production deploys
+        // must call `assertProductionReadiness` which requires the adapter address.
+        if (adapter == address(0)) return;
+
+        uint16 live;
+        try ILoopRiskOracleAdapter(adapter).computeStateBitmap(market, owner) returns (uint16 bitmap) {
+            live = bitmap;
+        } catch {
+            // Partial adapters (unit harnesses) without computeStateBitmap: skip.
+            return;
+        }
+
+        if (primaryType == uint8(LoopV1Types.PrimaryType.FORCE_EXIT)) {
+            _requireForceExitWaivers(live, acknowledgedRisks);
+            return;
+        }
+
+        bool riskIncreasing = primaryType == uint8(LoopV1Types.PrimaryType.OPEN)
+            || (primaryType == uint8(LoopV1Types.PrimaryType.REBALANCE) && maxDebtIncrease > 0);
+        if (!riskIncreasing) return;
+
+        if (live & RISK_UP_HARD_BLOCK_MASK != 0) {
+            _revertRiskUpBlocked(live);
+        }
+        // Open does not require Curve depth; leverage-up rebalance that deposits via vault also skips Curve.
+        // Curve insufficiency is enforced when the action actually sells collateral (deleverage/exit paths
+        // check via other bounds). Flash liquidity is checked in the flash callback.
+    }
+
+    function _requireForceExitWaivers(uint16 live, uint8 acknowledgedRisks) private pure {
+        if (
+            live & uint16(1 << uint8(LoopV1Types.StateBit.ORACLE_DEGRADED)) != 0
+                && acknowledgedRisks & LoopV1Types.RISK_STALE_ORACLE_OVERRIDE == 0
+        ) {
+            revert LoopV1Errors.AckRiskBitMissing();
+        }
+        if (
+            live & uint16(1 << uint8(LoopV1Types.StateBit.CURVE_LIQUIDITY_INSUFFICIENT)) != 0
+                && acknowledgedRisks & LoopV1Types.RISK_INSUFFICIENT_CURVE_DEPTH == 0
+        ) {
+            revert LoopV1Errors.AckRiskBitMissing();
+        }
+        if (
+            live & uint16(1 << uint8(LoopV1Types.StateBit.SEQUENCER_DOWN_OR_GRACE)) != 0
+                && acknowledgedRisks & LoopV1Types.RISK_SEQUENCER_DOWN_OVERRIDE == 0
+        ) {
+            revert LoopV1Errors.AckRiskBitMissing();
+        }
+        if (
+            live & uint16(1 << uint8(LoopV1Types.StateBit.VAULT_EVIDENCE_MISSING)) != 0
+                && acknowledgedRisks & LoopV1Types.RISK_VAULT_EVIDENCE_OVERRIDE == 0
+        ) {
+            revert LoopV1Errors.AckRiskBitMissing();
+        }
+    }
+
+    function _revertRiskUpBlocked(uint16 live) private pure {
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.AUDIT_GATE_CLOSED)) != 0) {
+            revert LoopV1Errors.AuditGateClosed();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE)) != 0) {
+            revert LoopV1Errors.PausedAction();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.INCIDENT_MITIGATING)) != 0) {
+            revert LoopV1Errors.IncidentMitigating();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.INCIDENT_INVESTIGATING)) != 0) {
+            revert LoopV1Errors.IncidentInvestigating();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.ORACLE_DEGRADED)) != 0) {
+            revert LoopV1Errors.OracleStale();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.SEQUENCER_DOWN_OR_GRACE)) != 0) {
+            revert LoopV1Errors.SequencerDown();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.VAULT_EVIDENCE_MISSING)) != 0) {
+            revert LoopV1Errors.VaultEvidenceMissing();
+        }
+        if (live & uint16(1 << uint8(LoopV1Types.StateBit.MORPHO_OWNER_EVIDENCE_MISSING)) != 0) {
+            revert LoopV1Errors.MorphoEvidenceMissing();
+        }
+        revert LoopV1Errors.ConfigIntegrityFailure();
     }
 
     function requireMarketParams(

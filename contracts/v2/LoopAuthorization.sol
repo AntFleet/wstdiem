@@ -133,7 +133,10 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             _tstore(CONTEXT_STEP_SLOT, bytes32(uint256(_tload(CONTEXT_STEP_SLOT)) + 1));
         }
 
-        if (tokenIn != address(0) && tokenAmount != 0) LoopV1TokenApproval.approve(tokenIn, morpho, tokenAmount);
+        if (tokenIn != address(0) && tokenAmount != 0) {
+            _requireAllowedSpender(primaryType, tokenIn, morpho);
+            LoopV1TokenApproval.approve(tokenIn, morpho, tokenAmount);
+        }
         (bool ok, bytes memory data) = morpho.call(morphoCalldata);
         if (tokenIn != address(0)) LoopV1TokenApproval.approve(tokenIn, morpho, 0);
         if (!ok) {
@@ -174,6 +177,14 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             msg.sender
         );
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
+        LoopV1ActionValidation.validateLiveStateBitmap(
+            registry,
+            action.identity.market,
+            action.identity.owner,
+            uint8(LoopV1Types.PrimaryType.OPEN),
+            1,
+            0
+        );
         _requireHighRisk(
             action.identity.owner,
             digest,
@@ -235,6 +246,14 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
         LoopV1ActionValidation.validateHarvest(
             registry, action.identity.market, uint8(LoopV1Types.PrimaryType.REBALANCE), action.bounds.maxDebtIncrease
+        );
+        LoopV1ActionValidation.validateLiveStateBitmap(
+            registry,
+            action.identity.market,
+            action.identity.owner,
+            uint8(LoopV1Types.PrimaryType.REBALANCE),
+            action.bounds.maxDebtIncrease,
+            0
         );
         if (highRisk) {
             _requireHighRisk(
@@ -796,6 +815,21 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         if (data.length < 4) revert LoopV1Errors.MorphoSelectorForbidden();
         assembly {
             selector := calldataload(data.offset)
+        }
+    }
+
+    /// @dev F31: when a SpenderCheck row exists, Morpho must match it (codehash optional).
+    function _requireAllowedSpender(uint8 primaryType, address token, address spender) private view {
+        if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
+        ILoopRegistry.SpenderCheck memory check = registry.allowedSpender(primaryType, token, spender);
+        if (check.spender == address(0)) return;
+        if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();
+        if (check.runtimeCodeHash != bytes32(0)) {
+            bytes32 codehash;
+            assembly {
+                codehash := extcodehash(spender)
+            }
+            if (codehash != check.runtimeCodeHash) revert LoopV1Errors.BytecodeMismatch();
         }
     }
 }

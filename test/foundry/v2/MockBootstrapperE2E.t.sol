@@ -66,6 +66,7 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
             })
         );
         registry.transferOwnership(address(bootstrapper));
+        bootstrapper.acceptRegistryOwnership();
         bootstrapper.queueAll();
         // Cross the registry timelock, then apply through the bootstrapper (phase 2).
         vm.roll(block.number + REGISTRY_TIMELOCK_BLOCKS);
@@ -103,8 +104,9 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
                 uniswapV3FlashPool: config.market.uniswapV3FlashPool
             })
         );
-        // registry is currently owned by `bootstrapper`; move it to bs2 to queue+apply.
+        // registry is currently owned by `bootstrapper`; Ownable2Step handoff to bs2.
         bootstrapper.transferRegistryOwnership(address(bs2));
+        bs2.acceptRegistryOwnership();
         bs2.queueAll();
         vm.expectRevert();
         bs2.applyAll();

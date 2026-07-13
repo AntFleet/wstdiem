@@ -280,6 +280,20 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     validateContractsConfig(config.contracts);
     this.contracts = freezeContracts(config.contracts);
     this.config = config;
+    // 2026-06-17: production apps should set requireIndexerSignatures so the
+    // SDK cannot silently trust an unsigned indexer over the network.
+    if (config.requireIndexerSignatures) {
+      if (!config.indexerSigningKey) {
+        throw new Error(
+          "requireIndexerSignatures=true but indexerSigningKey is missing",
+        );
+      }
+      if (!config.indexerVerifier) {
+        throw new Error(
+          "requireIndexerSignatures=true but indexerVerifier is missing",
+        );
+      }
+    }
     this.indexer = new IndexerClient({
       baseUrl: config.indexerBaseUrl,
       ...(config.fetch !== undefined ? { fetch: config.fetch } : {}),

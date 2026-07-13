@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
@@ -61,12 +62,16 @@ interface IUniswapV3PoolFingerprintReader {
 }
 
 /// @notice Phase B registry for digest-bound config, evidence sources, risk metadata, and PR-5 real bodies.
-contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
+/// @dev F22 (2026-06-17): Ownable2Step for ownership transfer. Fingerprint updates remain timelocked
+///      via `queueExternalFingerprintUpdate` / batch apply. Critical role mutators that remain
+///      single-step are intended for the bootstrap window before ownership is handed to governance.
+contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     error NonMonotonicRegistryVersion();
     error IndexerEqualsAnchor();
     error ZeroAddress();
     error UnknownBatchOp(uint8 op);
     error EmptyBatch();
+    error ProductionReadinessFailed(bytes32 reason);
 
     uint8 public constant OP_SET_MARKET_PARAMS = 1;
     uint8 public constant OP_SET_CANONICAL_SOURCE = 2;
@@ -172,6 +177,39 @@ contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
         forceExitMaxDeadlineValue = 1 days;
         revocationGraceValue = 5;
         anchorCadenceBlocksValue = 100;
+    }
+
+    /// @notice Fail-closed production readiness check (2026-06-17 deploy audit).
+    /// @dev Call after bootstrap before pointing real capital / opening the audit gate.
+    function assertProductionReadiness(bytes32 market) external view {
+        if (morpho == address(0)) revert ProductionReadinessFailed("morpho");
+        if (loopAuthorization == address(0)) revert ProductionReadinessFailed("authorization");
+        if (loopForceExitAuthorizer == address(0)) revert ProductionReadinessFailed("forceAuthorizer");
+        if (riskOracleAdapter == address(0)) revert ProductionReadinessFailed("riskOracle");
+        if (emergencyGuardian == address(0)) revert ProductionReadinessFailed("guardian");
+        if (governanceRole == address(0)) revert ProductionReadinessFailed("governance");
+        if (indexerSigningKey == address(0)) revert ProductionReadinessFailed("indexerSigner");
+        if (anchorSubmitter == address(0)) revert ProductionReadinessFailed("anchorSubmitter");
+        if (freshnessThresholds[LoopV1Types.SOURCE_CHAINLINK_FEED] == 0) {
+            revert ProductionReadinessFailed("chainlinkFreshness");
+        }
+        if (!supportedMarkets[market]) revert ProductionReadinessFailed("market");
+        if (executors[uint8(LoopV1Types.PrimaryType.OPEN)] == address(0)) {
+            revert ProductionReadinessFailed("openExecutor");
+        }
+        if (executors[uint8(LoopV1Types.PrimaryType.EXIT)] == address(0)) {
+            revert ProductionReadinessFailed("exitExecutor");
+        }
+        if (executors[uint8(LoopV1Types.PrimaryType.FORCE_EXIT)] == address(0)) {
+            revert ProductionReadinessFailed("forceExitExecutor");
+        }
+        // Fingerprints must be applied (validateExternalConfig fail-closed when missing).
+        if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.OPEN))) {
+            revert ProductionReadinessFailed("openFingerprints");
+        }
+        if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.EXIT))) {
+            revert ProductionReadinessFailed("exitFingerprints");
+        }
     }
 
     modifier onlyLoopAuthorization() {

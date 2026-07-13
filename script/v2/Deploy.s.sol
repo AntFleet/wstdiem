@@ -74,7 +74,9 @@ contract Deploy is Script {
         registry.setGovernanceRole(config.governanceMultisig);
 
         _verify(config, deployed, registry, guardian);
+        // F22 Ownable2Step: governance must call acceptOwnership() to complete transfer.
         registry.transferOwnership(config.governanceMultisig);
+        console2.log("pendingOwner (must acceptOwnership)", config.governanceMultisig);
         vm.stopBroadcast();
 
         console2.log("WSTDIEM Phase 1 deployment hash");

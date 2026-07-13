@@ -82,7 +82,8 @@ library DeploymentManifest {
         pure
         returns (ILoopRegistry.BatchOp[] memory ops)
     {
-        ops = new ILoopRegistry.BatchOp[](26);
+        // Baseline wiring + expanded spenders for exit/force-exit/rebalance vault paths (F31).
+        ops = new ILoopRegistry.BatchOp[](40);
         uint256 i;
         bytes32 market = config.market.id;
         LoopV1Types.MorphoMarketParams memory params = LoopV1Types.MorphoMarketParams({
@@ -131,11 +132,39 @@ library DeploymentManifest {
         ops[i++] = _op(OP_SET_UNISWAP_V3_FLASH_POOL, abi.encode(market, config.market.uniswapV3FlashPool));
         ops[i++] = _op(OP_SET_UNISWAP_V3_FLASH_FEE_TIER, abi.encode(market, config.market.uniswapV3FlashFeeTier));
         ops[i++] = _op(OP_SET_FORCE_EXIT_BUFFER_BPS, abi.encode(uint256(0)));
+        // Morpho spenders (authorization approves Morpho for loan/collateral tokens per action).
         ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.OPEN), config.market.loanToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.OPEN), config.market.collateralToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.loanToken, config.market.morpho);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.collateralToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.EXIT), config.market.loanToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.EXIT), config.market.collateralToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), config.market.loanToken, config.market.morpho);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), config.market.collateralToken, config.market.morpho);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), config.market.loanToken, config.market.morpho);
         ops[i++] = _opSpender(
-            uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.collateralToken, config.market.curvePool
+            uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), config.market.collateralToken, config.market.morpho
         );
+        // Vault / Curve external spenders used by executor approvals.
         ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.OPEN), config.market.loanToken, config.market.wstDiemVault);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.loanToken, config.market.wstDiemVault);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.collateralToken, config.market.curvePool);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.EXIT), config.market.collateralToken, config.market.curvePool);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), config.market.collateralToken, config.market.curvePool);
+        ops[i++] = _opSpender(
+            uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), config.market.collateralToken, config.market.curvePool
+        );
+
+        // Trim unused slots if the constant array was oversized (safe: all 32 slots filled above).
+        assembly {
+            mstore(ops, i)
+        }
     }
 
     function _op(uint8 code, bytes memory data) private pure returns (ILoopRegistry.BatchOp memory) {

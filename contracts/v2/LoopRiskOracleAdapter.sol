@@ -59,18 +59,23 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
         LoopV1Types.MorphoMarketParams memory params = registry.marketParams(market);
         (uint256 borrowShares, uint256 collateral, bool positionOk) = _position(market, owner);
         (uint256 totalBorrowAssets, uint256 totalBorrowShares, bool marketOk) = _marketBorrowState(market);
-        state.debt = totalBorrowShares == 0 ? borrowShares : borrowShares * totalBorrowAssets / totalBorrowShares;
+        // Ceil shares→assets so HF/debt never understate the Morpho repay requirement.
+        state.debt = totalBorrowShares == 0
+            ? borrowShares
+            : (borrowShares * totalBorrowAssets + totalBorrowShares - 1) / totalBorrowShares;
         state.collateral = collateral;
         state.curveDepth = _curveDepth(market);
         state.utilizationBps = _utilizationBps(market);
         (uint256 oraclePrice, bool oracleOk) = _morphoOraclePrice(params.oracle);
         if (!positionOk || !marketOk || !oracleOk) oraclePrice = 0;
-        uint256 collateralValue = collateral * oraclePrice / WAD;
+        uint256 priceWad = _normalizeOraclePriceToWad(oraclePrice);
+        uint256 collateralValue = collateral * priceWad / WAD;
+        uint256 lltvWad = params.lltv <= 10_000 ? params.lltv * 1e14 : params.lltv;
         if (state.debt == 0) {
             state.healthFactor = type(uint256).max;
             state.liquidationDistanceBps = type(uint16).max;
         } else {
-            state.healthFactor = collateralValue * params.lltv / state.debt;
+            state.healthFactor = collateralValue * lltvWad / state.debt;
             if (state.healthFactor <= WAD) {
                 state.liquidationDistanceBps = 0;
             } else {
@@ -162,9 +167,18 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
     {
         (uint256 borrowShares, uint256 collateral_, bool positionOk) = _position(market, owner);
         (uint256 totalBorrowAssets, uint256 totalBorrowShares, bool marketOk) = _marketBorrowState(market);
-        debt = totalBorrowShares == 0 ? borrowShares : borrowShares * totalBorrowAssets / totalBorrowShares;
+        debt = totalBorrowShares == 0
+            ? borrowShares
+            : (borrowShares * totalBorrowAssets + totalBorrowShares - 1) / totalBorrowShares;
         collateral = collateral_;
         ok = positionOk && marketOk;
+    }
+
+    function _normalizeOraclePriceToWad(uint256 rawPrice) private pure returns (uint256) {
+        if (rawPrice == 0) return 0;
+        // Morpho Blue oracle scale is 1e36 for 18/18 decimal pairs; mocks use 1e18 WAD.
+        if (rawPrice >= 1e30) return rawPrice / 1e18;
+        return rawPrice;
     }
 
     function _position(bytes32 market, address owner)
