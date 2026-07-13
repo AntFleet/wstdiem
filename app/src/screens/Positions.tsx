@@ -34,15 +34,14 @@ import { useSdk } from "../hooks/useSdk.js";
 import { useChainPin } from "../hooks/useChainPin.js";
 import { useGpmGates } from "../hooks/useGpmGates.js";
 import { useQuery } from "@tanstack/react-query";
-import { asBasisPoints, ForceExitRiskBit } from "@wstdiem/sdk";
+import {
+  asBasisPoints,
+  ForceExitRiskBit,
+  requiredForceExitRiskBitsFromStateBitmap,
+  forceExitBlockedByMultiCritical,
+} from "@wstdiem/sdk";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-
-// Acknowledged force-exit risks surfaced by the confirm panel AND committed by
-// the built ForceExit action. Kept as one constant so the per-bit checklist
-// the user reviews matches the acknowledgedRisks the signed digest commits.
-const FORCE_EXIT_ACK_RISKS =
-  ForceExitRiskBit.LOOSE_SLIPPAGE | ForceExitRiskBit.STALE_ORACLE_OVERRIDE;
 
 // Heuristic deleverage step for the "Rebalance ↓" action: nudge the target
 // leverage down 10% from current (clamped to 1.0x). A dedicated target-leverage
@@ -113,6 +112,22 @@ export function Positions(): JSX.Element {
   });
 
   const [forceExitOpen, setForceExitOpen] = useState(false);
+
+  // Audit C: derive ForceExit acknowledgedRisks from the live §7.1 state
+  // bitmap so the per-bit checklist matches what on-chain
+  // validateLiveStateBitmap will demand. Optional LOOSE_SLIPPAGE is added
+  // only when the user needs a single-critical override path (not multi).
+  const liveStateBitmap = Number(readinessQuery.data?.stateBitmap ?? 0);
+  const requiredForceExitRisks =
+    requiredForceExitRiskBitsFromStateBitmap(liveStateBitmap);
+  const forceExitMultiCriticalBlocked =
+    forceExitBlockedByMultiCritical(requiredForceExitRisks);
+  // When healthy (no required overrides), still surface LOOSE_SLIPPAGE so the
+  // panel exercises the checklist; when a single critical is required, OR it
+  // in so the user must acknowledge both slippage and the degraded bit.
+  const forceExitAckRisks = forceExitMultiCriticalBlocked
+    ? requiredForceExitRisks
+    : requiredForceExitRisks | ForceExitRiskBit.LOOSE_SLIPPAGE;
 
   const onAction = useCallback(
     async (id: PositionAction) => {
@@ -194,14 +209,14 @@ export function Positions(): JSX.Element {
       return;
     }
     try {
-      // Build the REAL ForceExit envelope (registryVersion / nonce /
-      // verifyingContract sourced from chain + config) with the same
-      // acknowledgedRisks the confirm panel displayed, then sign + broadcast.
+      // Build the REAL ForceExit envelope with the same acknowledgedRisks the
+      // confirm panel displayed (live-bitmap derived). SDK re-checks coverage
+      // + I-67 minimality against a fresh on-chain bitmap before returning.
       const action = await sdk.buildForceExitParams({
         market: activeMarket,
         owner,
         collateralAmount: positionQuery.data?.collateralWstDiem ?? 0n,
-        acknowledgedRisks: FORCE_EXIT_ACK_RISKS,
+        acknowledgedRisks: forceExitAckRisks,
         mevProtectionMode: "PRIVATE_BUILDER",
         mevWaiverBits: 0,
       });
@@ -213,7 +228,7 @@ export function Positions(): JSX.Element {
     } finally {
       setForceExitOpen(false);
     }
-  }, [sdk, activeMarket, owner, positionQuery.data]);
+  }, [sdk, activeMarket, owner, positionQuery.data, forceExitAckRisks]);
 
   const onRevoke = useCallback(
     async (policy: Policy) => {
@@ -295,14 +310,9 @@ export function Positions(): JSX.Element {
   const forceExitDemoUnavailable =
     verifyingContractEnv === undefined || executorEnv === undefined;
 
-  // Display action for the confirmation panel: the panel renders the
-  // verifyingContract (phishing banner), acknowledgedRisks (per-bit
-  // checklist), and bounds from this shape. verifyingContract + executor come
-  // from the same VITE_CONTRACT_* envs the SDK is pinned to, and
-  // acknowledgedRisks is the shared FORCE_EXIT_ACK_RISKS mask — so the fields
-  // the user reviews match what onForceExitSign commits when it builds the
-  // real envelope via sdk.buildForceExitParams (which additionally sources
-  // registryVersion / nonce / a fresh quote block from chain).
+  // Display action for the confirmation panel. acknowledgedRisks is derived
+  // from the live state bitmap so the checklist the user reviews matches
+  // what onForceExitSign commits via sdk.buildForceExitParams.
   const syntheticForceExit: ForceExitAction = {
     primaryType: "ForceExit",
     owner,
@@ -331,16 +341,12 @@ export function Positions(): JSX.Element {
       looseSlippageBps: 0 as never,
       looseFlashFeeCap: 0n,
       maxCurvePositionShareBps: 0 as never,
-      // Two acknowledged risks so the per-bit checklist exercises the
-      // multi-bit flow. The signed action (built in onForceExitSign via
-      // sdk.buildForceExitParams) commits this exact mask.
-      acknowledgedRisks: FORCE_EXIT_ACK_RISKS,
+      acknowledgedRisks: forceExitAckRisks,
     },
   };
 
-  // M-1 + M-2 closure: surface every external blocker (wallet / chain /
-  // G-PM gates / demo-env unavailable) as named reasons. `gpmGates` is
-  // evaluated at the top of the function so the hook ordering is stable.
+  // M-1 + M-2 + audit C: surface every external blocker (wallet / chain /
+  // G-PM gates / multi-critical degraded state / demo-env) as named reasons.
   const overrideReasons: ForceExitSignOverrideReason[] = [];
   if (!account.isConnected) {
     overrideReasons.push({
@@ -359,6 +365,13 @@ export function Positions(): JSX.Element {
       code: "FORCE_EXIT_DEMO_ENV_MISSING",
       message:
         "Force-Exit demo unavailable: VITE_CONTRACT_LOOP_FORCE_EXIT_AUTHORIZER / VITE_CONTRACT_LOOP_FORCE_EXIT_EXECUTOR not configured.",
+    });
+  }
+  if (forceExitMultiCriticalBlocked) {
+    overrideReasons.push({
+      code: "FORCE_EXIT_MULTI_CRITICAL",
+      message:
+        "Live protocol state requires more than one critical Force-Exit override at once (I-67 minimality). Wait for recovery to a single degraded condition, or use standard Exit if available.",
     });
   }
   for (const g of gpmGates.gates) {

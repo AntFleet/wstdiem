@@ -34,6 +34,12 @@ import {
   type PublicClient,
 } from "viem";
 import { createCanonicalEvidenceResolver } from "./canonical-evidence-resolver.js";
+import {
+  assertForceExitRisksCoverRequired,
+  forceExitBlockedByMultiCritical,
+  requiredForceExitRiskBitsFromStateBitmap,
+} from "../force-exit/waivers.js";
+import { LOOP_RISK_ORACLE_READ_ABI } from "./abis.js";
 import type {
   Action,
   AutomationExecAction,
@@ -436,12 +442,14 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     // sequencer / anchor reads.
     const currentBlock = await this.readClient.getBlockNumber();
     const pinned = currentBlock;
-    const [snapshot, head, sequencer, perActionDecisions] = await Promise.all([
-      this.indexer.snapshotsLatest(),
-      this.indexer.health(),
-      this.readSequencer(market, pinned),
-      this.evaluatePerActionReadiness(market, pinned),
-    ]);
+    const [snapshot, head, sequencer, perActionDecisions, liveBitmap] =
+      await Promise.all([
+        this.indexer.snapshotsLatest(),
+        this.indexer.health(),
+        this.readSequencer(market, pinned),
+        this.evaluatePerActionReadiness(market, pinned),
+        this.readLiveStateBitmap(market, owner),
+      ]);
     const indexerAnchor = this.classifyAnchor(snapshot, head);
     // A5-3 + PR-13 audit C-1/C-2/H-3: cross-check the indexer's anchor claim
     // against the on-chain LoopAnchorRegistry, pinned to the planning block.
@@ -499,7 +507,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       market,
       ...(owner !== undefined ? { owner } : {}),
       blockNumber: asBlockNumber(currentBlock),
-      stateBitmap: asStateBitmap(0),
+      stateBitmap: asStateBitmap(liveBitmap),
       perAction,
       sources: [],
       sequencer: sequencer.status,
@@ -1586,6 +1594,23 @@ export class LiveWstdiemSdk implements WstdiemSdk {
   ): Promise<ForceExitAction> {
     // ForceExit binds to the distinct LoopForceExitAuthorizer domain +
     // LoopForceExitExecutor, per §A6.2.1.
+    // Audit C: refuse to build a digest that would revert on-chain for
+    // missing risk waivers or I-67 multi-critical overbreadth.
+    const liveBitmap = await this.readLiveStateBitmap(
+      input.market,
+      input.owner,
+    );
+    const requiredRisks = requiredForceExitRiskBitsFromStateBitmap(liveBitmap);
+    if (forceExitBlockedByMultiCritical(requiredRisks)) {
+      throw new Error(
+        `ForceExit blocked: live state bitmap 0x${liveBitmap.toString(16)} ` +
+          `requires multiple critical risk overrides (0x${requiredRisks.toString(16)}). ` +
+          `Phase-1 I-67 allows only one critical override per digest — wait for ` +
+          `market recovery to a single-degraded or healthy state.`,
+      );
+    }
+    assertForceExitRisksCoverRequired(input.acknowledgedRisks, requiredRisks);
+
     const base = await this.deriveEnvelopeBase(input, "ForceExit");
     const slippageBps = input.slippageBps ?? asBasisPoints(DEFAULT_SLIPPAGE_BPS);
     const draft: ForceExitAction = {
@@ -1599,6 +1624,38 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       bounds: this.deriveForceExitBounds(input, slippageBps),
     };
     return this.withEvidenceHash(draft, base.pinned);
+  }
+
+  /**
+   * Live §7.1 state bitmap from LoopRiskOracleAdapter.computeStateBitmap.
+   * Returns 0 when the adapter is missing or the call fails (unit harnesses).
+   */
+  async readLiveStateBitmap(
+    market: MarketId,
+    owner?: Address,
+  ): Promise<number> {
+    const adapter = this.contracts.loopRiskOracleAdapter;
+    if (
+      !adapter ||
+      adapter === "0x0000000000000000000000000000000000000000"
+    ) {
+      return 0;
+    }
+    try {
+      const raw = (await this.readClient.readContract({
+        address: adapter,
+        abi: LOOP_RISK_ORACLE_READ_ABI,
+        functionName: "computeStateBitmap",
+        args: [
+          market,
+          (owner ??
+            "0x0000000000000000000000000000000000000000") as Address,
+        ],
+      })) as number | bigint;
+      return Number(raw) & 0xffff;
+    } catch {
+      return 0;
+    }
   }
 
   /** Source registryVersion + merkleRoot (registry reader), a fresh quote

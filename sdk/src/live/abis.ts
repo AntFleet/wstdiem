@@ -190,6 +190,20 @@ export const LOOP_ANCHOR_REGISTRY_READ_ABI = [
   { type: "function", name: "lastAnchorBlock", inputs: [], outputs: [{ type: "uint64" }], stateMutability: "view" },
 ] as const satisfies Abi;
 
+/** LoopRiskOracleAdapter — live §7.1 state bitmap (audit C ForceExit waivers). */
+export const LOOP_RISK_ORACLE_READ_ABI = [
+  {
+    type: "function",
+    name: "computeStateBitmap",
+    inputs: [
+      { name: "market", type: "bytes32" },
+      { name: "owner", type: "address" },
+    ],
+    outputs: [{ type: "uint16" }],
+    stateMutability: "view",
+  },
+] as const satisfies Abi;
+
 /** Morpho IIrm — borrowRateView for accrued-debt quoting. */
 export const MORPHO_IRM_READ_ABI = [
   {
