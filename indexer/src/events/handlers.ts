@@ -65,7 +65,10 @@ export function applyEvent(
 
   switch (decoded.eventName) {
     case "LoopActionStep": {
+      // ILoopV1Events: (owner, market, actionId, stepIndex, primaryType, target, selector, terminal)
+      // Authorization emits digest into the actionId slot (topic for the step identity).
       const a = decoded.args as Record<string, unknown>;
+      const actionId = requireString(a.actionId, "actionId");
       repos.actionSteps.insert({
         blockNumber: context.blockNumber,
         blockHash: context.blockHash,
@@ -73,40 +76,42 @@ export function applyEvent(
         transactionHash: txHash,
         owner: requireString(a.owner, "owner"),
         primaryType: requireNumber(a.primaryType, "primaryType"),
-        actionId: requireString(a.actionId, "actionId"),
-        digest: requireString(a.digest, "digest"),
-        stepKind: requireNumber(a.stepKind, "stepKind"),
+        actionId,
+        digest: actionId,
+        stepKind: 0,
         stepIndex: requireNumber(a.stepIndex, "stepIndex"),
         payloadJson: JSON.stringify({
-          logIndexLow: requireNumber(a.logIndexLow, "logIndexLow"),
-          logIndexHigh: requireNumber(a.logIndexHigh, "logIndexHigh"),
-          payload: requireString(a.payload, "payload"),
+          market: requireString(a.market, "market"),
+          target: requireString(a.target, "target"),
+          selector: requireString(a.selector, "selector"),
+          terminal: Boolean(a.terminal),
         }),
       });
       return;
     }
-    case "PolicyCreated":
-    case "PolicyUpdated": {
+    case "PolicyCreated": {
+      // Phase-1 event has no policyClass; store 0 until a class field is added on-chain.
       const a = decoded.args as Record<string, unknown>;
-      const owner = requireString(a.owner, "owner");
-      const policyId = requireBigInt(a.policyId, "policyId");
-      const policyHash =
-        decoded.eventName === "PolicyCreated"
-          ? requireString(a.policyHash, "policyHash")
-          : requireString(a.newPolicyHash, "newPolicyHash");
-      const primaryType = requireNumber(a.primaryType, "primaryType");
-      const policyClass =
-        decoded.eventName === "PolicyCreated" ? requireNumber(a.policyClass, "policyClass") : 0;
-      const expiryBlock = requireBigInt(a.expiryBlock, "expiryBlock");
       repos.policies.upsertCreated({
-        owner,
-        policyId,
-        primaryType,
-        policyHash,
-        policyClass,
+        owner: requireString(a.owner, "owner"),
+        policyId: requireBigInt(a.policyId, "policyId"),
+        primaryType: requireNumber(a.primaryType, "primaryType"),
+        policyHash: requireString(a.policyHash, "policyHash"),
+        policyClass: 0,
         createdBlock: context.blockNumber,
-        expiryBlock,
+        expiryBlock: requireBigInt(a.expiryBlock, "expiryBlock"),
         state: "active",
+      });
+      return;
+    }
+    case "PolicyUpdated": {
+      // PolicyUpdated has no primaryType; preserve existing row fields.
+      const a = decoded.args as Record<string, unknown>;
+      repos.policies.upsertUpdated({
+        owner: requireString(a.owner, "owner"),
+        policyId: requireBigInt(a.policyId, "policyId"),
+        policyHash: requireString(a.newPolicyHash, "newPolicyHash"),
+        expiryBlock: requireBigInt(a.expiryBlock, "expiryBlock"),
       });
       return;
     }
@@ -129,12 +134,13 @@ export function applyEvent(
       return;
     }
     case "RegistryConfigBatchCommitted": {
+      // Event fields: version, root, committer, opsCount (all but opsCount indexed).
       const a = decoded.args as Record<string, unknown>;
       repos.registryCommits.insert({
-        registryVersion: requireBigInt(a.registryVersion, "registryVersion"),
-        merkleRoot: requireString(a.merkleRoot, "merkleRoot"),
+        registryVersion: requireBigInt(a.version, "version"),
+        merkleRoot: requireString(a.root, "root"),
         committer: requireString(a.committer, "committer"),
-        opCount: requireNumber(a.opCount, "opCount"),
+        opCount: requireNumber(a.opsCount, "opsCount"),
         blockNumber: context.blockNumber,
         blockHash: context.blockHash,
         transactionHash: txHash,

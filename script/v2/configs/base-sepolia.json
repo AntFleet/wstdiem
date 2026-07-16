@@ -4,14 +4,16 @@
   "_comment": "Base Sepolia has no real Morpho / wstDIEM vault / Curve / Uniswap / Chainlink to point at, so the beta runs against MOCK external protocols. Deploy them with `forge script script/v2/DeployMocks.s.sol:DeployMocks` (see that file's header). The mock/core addresses below are FILLED FROM the DeployMocks console output at deploy time. Do NOT run the canonical `Deploy.s.sol` against this file — DeployMocks bootstraps its own mock venues and fingerprints. Placeholder 0x2000.../0x3000... values are kept only as valid-shaped defaults and MUST be overwritten with the DeployMocks output before the addresses are relied upon.",
   "_deployMocks": true,
   "_deployment": {
-    "_comment": "LIVE mock deploy via DeployMocksSepolia.s.sol phase 1 (deploy + queue), 2026-07-12. Fingerprints are QUEUED; run phase 2 (applyFingerprints) at/after applyBlock to activate the market. Deployer/operator is a throwaway EOA whose key is required for phase 2 (bootstrapper.applyAll is onlyOperator).",
-    "status": "phase1-queued",
+    "_comment": "LIVE mock deploy via DeployMocksSepolia.s.sol. Phase 1 (deploy + queue) 2026-07-12; phase 2 (applyFingerprints) applied 2026-07-16 — all six fingerprints applied, registry ownership handed to governance, OPEN/EXIT gates PASS. Market is LIVE. Deployer/operator was a throwaway EOA whose key was required for phase 2 (bootstrapper.applyAll is onlyOperator).",
+    "status": "live",
     "deployer": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "governance": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "bootstrapper": "0xcc0646563284d331c3e2349c21764e81cfe2cc2d",
     "fingerprintApplyBlock": 44184367,
     "queuedAtBlock": 44054367,
     "registryVersionAtPhase1": 1,
+    "fingerprintsAppliedAtBlock": 44211071,
+    "registryVersionAtPhase2": 2,
     "rpc": "https://base-sepolia-rpc.publicnode.com",
     "core": {
       "registry": "0xdfdaf03861400273a0a661ed6f9a1163864f2860",

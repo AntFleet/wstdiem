@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
@@ -61,12 +62,27 @@ interface IUniswapV3PoolFingerprintReader {
 }
 
 /// @notice Phase B registry for digest-bound config, evidence sources, risk metadata, and PR-5 real bodies.
-contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
+/// @dev F22 (2026-06-17): Ownable2Step for ownership transfer. Fingerprint updates remain timelocked
+///      via `queueExternalFingerprintUpdate` / batch apply. Critical role mutators that remain
+///      single-step are intended for the bootstrap window before ownership is handed to governance.
+contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     error NonMonotonicRegistryVersion();
     error IndexerEqualsAnchor();
     error ZeroAddress();
     error UnknownBatchOp(uint8 op);
     error EmptyBatch();
+    error ProductionReadinessFailed(bytes32 reason);
+    error NoPendingRoleUpdate();
+    error BootstrapAlreadyClosed();
+    error BootstrapStillOpen();
+    error NoPendingBatch();
+    error PendingBatchMismatch();
+
+    uint8 public constant ROLE_INDEXER_SIGNER = 1;
+    uint8 public constant ROLE_ANCHOR_SUBMITTER = 2;
+    uint8 public constant ROLE_EMERGENCY_GUARDIAN = 3;
+    uint8 public constant ROLE_GOVERNANCE = 4;
+    uint8 public constant ROLE_HARVEST_AUTHORITY = 5;
 
     uint8 public constant OP_SET_MARKET_PARAMS = 1;
     uint8 public constant OP_SET_CANONICAL_SOURCE = 2;
@@ -159,6 +175,29 @@ contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
     uint256 private revocationGraceValue;
     uint64 private anchorCadenceBlocksValue;
 
+    struct PendingRole {
+        address next;
+        uint256 effectiveBlock;
+    }
+
+    mapping(uint8 roleId => PendingRole pending) private pendingRoles;
+    /// @dev When true, executor/authorization reject unregistered spenders (production).
+    bool public spendAllowlistEnforced;
+
+    /// @dev While false, `batchUpdate` applies immediately (deploy/bootstrap). After
+    ///      `closeBootstrap()`, batches queue for REGISTRY_TIMELOCK_BLOCKS then `applyBatchUpdate`.
+    bool public bootstrapClosed;
+
+    struct PendingBatch {
+        bytes32 opsHash;
+        uint256 nextVersion;
+        bytes32 nextRoot;
+        uint256 effectiveBlock;
+        uint16 opCount;
+    }
+
+    PendingBatch private pendingBatch;
+
     constructor(address initialOwner) Ownable(initialOwner) {
         harvestCoolingBlocksValue = 30;
         operatorRecoveryNBlocksValue = 1_296_000;
@@ -174,6 +213,98 @@ contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
         anchorCadenceBlocksValue = 100;
     }
 
+    /// @notice Fail-closed production readiness check (2026-06-17 deploy audit).
+    /// @dev Call after bootstrap before pointing real capital / opening the audit gate.
+    function assertProductionReadiness(bytes32 market) external view {
+        if (morpho == address(0)) revert ProductionReadinessFailed("morpho");
+        if (loopAuthorization == address(0)) revert ProductionReadinessFailed("authorization");
+        if (loopForceExitAuthorizer == address(0)) revert ProductionReadinessFailed("forceAuthorizer");
+        if (riskOracleAdapter == address(0)) revert ProductionReadinessFailed("riskOracle");
+        if (emergencyGuardian == address(0)) revert ProductionReadinessFailed("guardian");
+        if (governanceRole == address(0)) revert ProductionReadinessFailed("governance");
+        if (indexerSigningKey == address(0)) revert ProductionReadinessFailed("indexerSigner");
+        if (anchorSubmitter == address(0)) revert ProductionReadinessFailed("anchorSubmitter");
+        if (freshnessThresholds[LoopV1Types.SOURCE_CHAINLINK_FEED] == 0) {
+            revert ProductionReadinessFailed("chainlinkFreshness");
+        }
+        if (!supportedMarkets[market]) revert ProductionReadinessFailed("market");
+        if (executors[uint8(LoopV1Types.PrimaryType.OPEN)] == address(0)) {
+            revert ProductionReadinessFailed("openExecutor");
+        }
+        if (executors[uint8(LoopV1Types.PrimaryType.EXIT)] == address(0)) {
+            revert ProductionReadinessFailed("exitExecutor");
+        }
+        if (executors[uint8(LoopV1Types.PrimaryType.FORCE_EXIT)] == address(0)) {
+            revert ProductionReadinessFailed("forceExitExecutor");
+        }
+        if (!spendAllowlistEnforced) revert ProductionReadinessFailed("spendAllowlist");
+        LoopV1Types.MorphoMarketParams memory params = marketParamStore[market];
+        if (params.loanToken == address(0)) revert ProductionReadinessFailed("marketParams");
+        address vault = wstDiemVaults[market];
+        address curve = curvePools[market];
+        if (spenderChecks[uint8(LoopV1Types.PrimaryType.OPEN)][params.loanToken][vault].spender != vault) {
+            revert ProductionReadinessFailed("openVaultSpender");
+        }
+        if (spenderChecks[uint8(LoopV1Types.PrimaryType.EXIT)][params.collateralToken][curve].spender != curve) {
+            revert ProductionReadinessFailed("exitCurveSpender");
+        }
+        if (spenderChecks[uint8(LoopV1Types.PrimaryType.OPEN)][params.loanToken][morpho].spender != morpho) {
+            revert ProductionReadinessFailed("openMorphoSpender");
+        }
+        if (requiredEvidenceSources[uint8(LoopV1Types.PrimaryType.OPEN)].length == 0) {
+            revert ProductionReadinessFailed("openEvidenceSet");
+        }
+        if (requiredEvidenceSources[uint8(LoopV1Types.PrimaryType.EXIT)].length == 0) {
+            revert ProductionReadinessFailed("exitEvidenceSet");
+        }
+        // Fingerprints must be applied (validateExternalConfig fail-closed when missing).
+        if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.OPEN))) {
+            revert ProductionReadinessFailed("openFingerprints");
+        }
+        if (!this.validateExternalConfig(market, uint8(LoopV1Types.PrimaryType.EXIT))) {
+            revert ProductionReadinessFailed("exitFingerprints");
+        }
+        // Immediate batchUpdate must no longer be available for production.
+        if (!bootstrapClosed) revert ProductionReadinessFailed("bootstrapOpen");
+    }
+
+    /// @notice Irreversibly end the bootstrap window. Fingerprint apply + initial wiring first.
+    function closeBootstrap() external onlyOwner {
+        if (bootstrapClosed) revert BootstrapAlreadyClosed();
+        bootstrapClosed = true;
+        emit BootstrapClosed(block.number);
+    }
+
+    function pendingBatchUpdate()
+        external
+        view
+        returns (bytes32 opsHash, uint256 nextVersion, bytes32 nextRoot, uint256 effectiveBlock, uint16 opCount)
+    {
+        PendingBatch storage p = pendingBatch;
+        return (p.opsHash, p.nextVersion, p.nextRoot, p.effectiveBlock, p.opCount);
+    }
+
+    function cancelPendingBatch() external onlyOwner {
+        PendingBatch storage p = pendingBatch;
+        if (p.effectiveBlock == 0) revert NoPendingBatch();
+        uint256 version = p.nextVersion;
+        bytes32 root = p.nextRoot;
+        delete pendingBatch;
+        emit RegistryConfigBatchCancelled(version, root, msg.sender);
+    }
+
+    /// @notice Toggle spend allowlist enforcement. After bootstrap, cannot disable (D-3).
+    function setSpendAllowlistEnforced(bool enforced) external onlyOwner {
+        if (bootstrapClosed && !enforced) revert ProductionReadinessFailed("spendAllowlistLocked");
+        spendAllowlistEnforced = enforced;
+        emit SpendAllowlistEnforcementChanged(enforced);
+    }
+
+    function pendingCriticalRole(uint8 roleId) external view returns (address next, uint256 effectiveBlock) {
+        PendingRole storage p = pendingRoles[roleId];
+        return (p.next, p.effectiveBlock);
+    }
+
     modifier onlyLoopAuthorization() {
         if (msg.sender != loopAuthorization) revert LoopV1Errors.OnlyAuthorization();
         _;
@@ -184,9 +315,41 @@ contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
         _;
     }
 
+    /// @notice Commit a config batch. Immediate while bootstrap is open; queues under timelock after close.
     function batchUpdate(BatchOp[] calldata ops, uint256 nextVersion, bytes32 nextRoot) external onlyOwner {
         if (ops.length == 0) revert EmptyBatch();
         if (nextVersion <= registryVersion) revert NonMonotonicRegistryVersion();
+        if (!bootstrapClosed) {
+            _commitBatch(ops, nextVersion, nextRoot);
+            return;
+        }
+        // Post-bootstrap: queue only; caller must re-supply identical ops to applyBatchUpdate.
+        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        pendingBatch = PendingBatch({
+            opsHash: keccak256(abi.encode(ops)),
+            nextVersion: nextVersion,
+            nextRoot: nextRoot,
+            effectiveBlock: effectiveBlock,
+            opCount: uint16(ops.length)
+        });
+        emit RegistryConfigBatchQueued(nextVersion, nextRoot, msg.sender, uint16(ops.length), effectiveBlock);
+    }
+
+    /// @notice Apply a queued batch after the registry timelock. `ops` must hash-match the queue.
+    function applyBatchUpdate(BatchOp[] calldata ops) external onlyOwner {
+        if (!bootstrapClosed) revert BootstrapStillOpen();
+        PendingBatch memory pending = pendingBatch;
+        if (pending.effectiveBlock == 0) revert NoPendingBatch();
+        if (block.number < pending.effectiveBlock) revert LoopV1Errors.FingerprintTimelockNotElapsed();
+        if (ops.length != pending.opCount) revert PendingBatchMismatch();
+        if (keccak256(abi.encode(ops)) != pending.opsHash) revert PendingBatchMismatch();
+        // Monotonicity: reject if another path advanced version (should not happen without apply).
+        if (pending.nextVersion <= registryVersion) revert NonMonotonicRegistryVersion();
+        delete pendingBatch;
+        _commitBatch(ops, pending.nextVersion, pending.nextRoot);
+    }
+
+    function _commitBatch(BatchOp[] calldata ops, uint256 nextVersion, bytes32 nextRoot) private {
         for (uint256 i = 0; i < ops.length; i++) {
             _dispatch(ops[i]);
         }
@@ -207,31 +370,59 @@ contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
     function setIndexerSigningKey(address nextKey) external onlyOwner {
         if (nextKey == address(0)) revert ZeroAddress();
         if (nextKey == anchorSubmitter) revert IndexerEqualsAnchor();
-        address previous = indexerSigningKey;
-        indexerSigningKey = nextKey;
-        emit IndexerSignerRotated(previous, nextKey, block.number);
+        if (indexerSigningKey == address(0)) {
+            _applyIndexerSigningKey(nextKey);
+            return;
+        }
+        _queueRole(ROLE_INDEXER_SIGNER, nextKey);
+    }
+
+    function applyIndexerSigningKey() external onlyOwner {
+        address next = _consumePendingRole(ROLE_INDEXER_SIGNER);
+        if (next == anchorSubmitter) revert IndexerEqualsAnchor();
+        _applyIndexerSigningKey(next);
     }
 
     function setAnchorSubmitter(address nextSubmitter) external onlyOwner {
         if (nextSubmitter == address(0)) revert ZeroAddress();
         if (nextSubmitter == indexerSigningKey) revert IndexerEqualsAnchor();
-        address previous = anchorSubmitter;
-        anchorSubmitter = nextSubmitter;
-        emit AnchorSubmitterRotated(previous, nextSubmitter, block.number);
+        if (anchorSubmitter == address(0)) {
+            _applyAnchorSubmitter(nextSubmitter);
+            return;
+        }
+        _queueRole(ROLE_ANCHOR_SUBMITTER, nextSubmitter);
+    }
+
+    function applyAnchorSubmitter() external onlyOwner {
+        address next = _consumePendingRole(ROLE_ANCHOR_SUBMITTER);
+        if (next == indexerSigningKey) revert IndexerEqualsAnchor();
+        _applyAnchorSubmitter(next);
     }
 
     function setEmergencyGuardian(address nextGuardian) external onlyOwner {
         if (nextGuardian == address(0)) revert ZeroAddress();
-        address previous = emergencyGuardian;
-        emergencyGuardian = nextGuardian;
-        emit RegistryEmergencyGuardianChanged(previous, nextGuardian, block.number);
+        if (emergencyGuardian == address(0)) {
+            _applyEmergencyGuardian(nextGuardian);
+            return;
+        }
+        _queueRole(ROLE_EMERGENCY_GUARDIAN, nextGuardian);
+    }
+
+    function applyEmergencyGuardian() external onlyOwner {
+        _applyEmergencyGuardian(_consumePendingRole(ROLE_EMERGENCY_GUARDIAN));
     }
 
     function setGovernanceRole(address nextGovernance) external onlyOwner {
         if (nextGovernance == address(0)) revert ZeroAddress();
-        address previous = governanceRole;
-        governanceRole = nextGovernance;
-        emit GovernanceRoleChanged(previous, nextGovernance);
+        if (governanceRole == address(0)) {
+            _applyGovernanceRole(nextGovernance);
+            return;
+        }
+        _queueRole(ROLE_GOVERNANCE, nextGovernance);
+    }
+
+    function applyGovernanceRole() external onlyOwner {
+        _applyGovernanceRole(_consumePendingRole(ROLE_GOVERNANCE));
     }
 
     function setAnchorCadenceBlocks(uint64 nextCadenceBlocks) external onlyOwner {
@@ -436,7 +627,61 @@ contract LoopRegistry is Ownable, ILoopRegistry, ILoopV1Events {
     }
 
     function setHarvestAuthority(address nextAuthority) external onlyOwner {
-        harvestAuthority = nextAuthority;
+        if (harvestAuthority == address(0)) {
+            harvestAuthority = nextAuthority;
+            return;
+        }
+        if (nextAuthority == address(0)) revert ZeroAddress();
+        _queueRole(ROLE_HARVEST_AUTHORITY, nextAuthority);
+    }
+
+    function applyHarvestAuthority() external onlyOwner {
+        address next = _consumePendingRole(ROLE_HARVEST_AUTHORITY);
+        address previous = harvestAuthority;
+        harvestAuthority = next;
+        emit CriticalRoleUpdateApplied(ROLE_HARVEST_AUTHORITY, previous, next);
+    }
+
+    function _queueRole(uint8 roleId, address next) private {
+        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        pendingRoles[roleId] = PendingRole(next, effectiveBlock);
+        emit CriticalRoleUpdateQueued(roleId, next, effectiveBlock);
+    }
+
+    function _consumePendingRole(uint8 roleId) private returns (address next) {
+        PendingRole storage pending = pendingRoles[roleId];
+        if (pending.next == address(0)) revert NoPendingRoleUpdate();
+        if (block.number < pending.effectiveBlock) revert LoopV1Errors.FingerprintTimelockNotElapsed();
+        next = pending.next;
+        delete pendingRoles[roleId];
+    }
+
+    function _applyIndexerSigningKey(address nextKey) private {
+        address previous = indexerSigningKey;
+        indexerSigningKey = nextKey;
+        emit IndexerSignerRotated(previous, nextKey, block.number);
+        emit CriticalRoleUpdateApplied(ROLE_INDEXER_SIGNER, previous, nextKey);
+    }
+
+    function _applyAnchorSubmitter(address nextSubmitter) private {
+        address previous = anchorSubmitter;
+        anchorSubmitter = nextSubmitter;
+        emit AnchorSubmitterRotated(previous, nextSubmitter, block.number);
+        emit CriticalRoleUpdateApplied(ROLE_ANCHOR_SUBMITTER, previous, nextSubmitter);
+    }
+
+    function _applyEmergencyGuardian(address nextGuardian) private {
+        address previous = emergencyGuardian;
+        emergencyGuardian = nextGuardian;
+        emit RegistryEmergencyGuardianChanged(previous, nextGuardian, block.number);
+        emit CriticalRoleUpdateApplied(ROLE_EMERGENCY_GUARDIAN, previous, nextGuardian);
+    }
+
+    function _applyGovernanceRole(address nextGovernance) private {
+        address previous = governanceRole;
+        governanceRole = nextGovernance;
+        emit GovernanceRoleChanged(previous, nextGovernance);
+        emit CriticalRoleUpdateApplied(ROLE_GOVERNANCE, previous, nextGovernance);
     }
 
     function lastHarvestBlock(bytes32 market) external view returns (uint256) {

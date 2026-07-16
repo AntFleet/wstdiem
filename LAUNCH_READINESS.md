@@ -86,7 +86,14 @@ under `_deployment`. Key facts:
 - Deployer key persisted at `~/.wstdiem-sepolia-deployer.json` (chmod 600, outside repo). Funded from the cobalt Sepolia wallet.
 - A live-broadcast blocker was found + fixed: the registry's curve/chainlink live baselines are block-sensitive, so a script that computes off-chain and broadcasts a separate queue tx reverts `FingerprintInvalid(3)`. Fix = on-chain `MockFingerprintBootstrapper` (`contracts/v2/mocks/`) that computes+queues atomically, driven by `DeployMocksSepolia.s.sol`. Local proof: `test/foundry/v2/MockBootstrapperE2E.t.sol`.
 
-### ⏳ PHASE 2 — apply fingerprints (at/after block 44184367, ~2026-07-15)
+### ✅ PHASE 2 — fingerprints APPLIED, market LIVE (2026-07-16, block 44211071)
+
+Applied after the registry timelock (target block 44184367) elapsed. All six fingerprints
+applied atomically, registry ownership handed to governance
+(`0xb41891318Be43D2A966f574BaFC52D0a501Db96A`), and `registryVersion` advanced 1 → 2.
+`validateExternalConfig(marketId, OPEN)` and `(marketId, EXIT)` now both return **true** —
+the market is live. `applyAll()` tx `0x0fabf87e…f93e3`, `transferRegistryOwnership()` tx
+`0xd75676ab…4ada3`. The command used was:
 
 The registry timelock (130_000 blocks, ~3 days) must elapse before the fingerprints can apply.
 Until then `validateExternalConfig` is false and no loop can open. When the block is reached:
@@ -138,9 +145,13 @@ and drive one open→exit; (d) un-fixme the action-path Playwright specs against
 
 ### P3 — quality gate before public beta
 
-- [ ] **T9. E2e connect→sign→broadcast coverage.** ~42 action-path Playwright specs
-  are `test.fixme`. Un-fixme against a funded test EOA / mock chain.
+- [ ] **T9. E2e connect→sign→broadcast coverage.** Action-path specs use
+  `fixtures/mock-wallet.ts` for connect/account UI; full funded broadcast
+  remains gated on `LIVE_E2E=1` (Anvil or Sepolia mock deploy). Automation /
+  EIP-1271 Safe paths stay deferred with beta scope (T4/T7).
 - [ ] 🔒 **T10. External audit gate closed** (repo's own stated blocker).
+  Process scaffolding lives under `audit/` (`SCOPE.md`, `CHECKLIST-GATE-OPEN.md`).
+  Gate stays closed until a firm report is published there — scaffolding ≠ audit.
 
 ---
 
@@ -189,6 +200,11 @@ The app's Automation *create* screen (T4) is therefore also out of first-beta sc
   SDK ABI + snapshot to `uint256`; corrected one decode-test fixture. All suites green + both
   forge-artifact parity scripts pass. This was a latent SDK/contract ABI mismatch, not
   introduced by this branch.
+
+- 2026-07-16: **Base Sepolia phase 2 applied; market live.** Timelock elapsed (applied at
+  block 44211071 ≥ target 44184367); all six fingerprints applied, registry ownership → governance,
+  `registryVersion` 1 → 2, `validateExternalConfig` OPEN/EXIT both `true`. `base-sepolia.json`
+  `_deployment.status` → `live`.
 
 ### Review flags status
 1. ForceExit nonce — ✅ closed.

@@ -221,6 +221,45 @@ export class PolicyRepository {
       );
   }
 
+  /** PolicyUpdated on-chain has no primaryType/class — only hash + expiry change. */
+  upsertUpdated(args: {
+    owner: Hex;
+    policyId: bigint;
+    policyHash: Hex;
+    expiryBlock: bigint;
+  }): void {
+    const existing = this.db
+      .prepare<
+        [string, number],
+        { primary_type: number; policy_class: number; created_block: number }
+      >(
+        "SELECT primary_type, policy_class, created_block FROM policies WHERE owner = ? AND policy_id = ?",
+      )
+      .get(args.owner, Number(args.policyId));
+
+    if (!existing) {
+      // Out-of-order / partial reindex: insert with unknown type/class.
+      this.upsertCreated({
+        owner: args.owner,
+        policyId: args.policyId,
+        primaryType: 0,
+        policyHash: args.policyHash,
+        policyClass: 0,
+        createdBlock: args.expiryBlock,
+        expiryBlock: args.expiryBlock,
+        state: "active",
+      });
+      return;
+    }
+
+    this.db
+      .prepare(
+        `UPDATE policies SET policy_hash = ?, expiry_block = ?, state = 'active'
+         WHERE owner = ? AND policy_id = ?`,
+      )
+      .run(args.policyHash, toNumber(args.expiryBlock), args.owner, Number(args.policyId));
+  }
+
   markRevoking(owner: Hex, policyId: bigint, revocationBlock: bigint): void {
     this.db
       .prepare(

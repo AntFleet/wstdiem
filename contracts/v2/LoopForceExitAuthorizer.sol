@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ILoopForceExitAuthorizer} from "./interfaces/ILoopForceExitAuthorizer.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
+import {LoopV1ActionValidation} from "./libraries/LoopV1ActionValidation.sol";
 import {LoopV1EIP712} from "./libraries/LoopV1EIP712.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
 import {LoopV1Hashing} from "./libraries/LoopV1Hashing.sol";
@@ -77,6 +78,15 @@ contract LoopForceExitAuthorizer is ILoopForceExitAuthorizer {
             action.identity,
             uint8(LoopV1Types.PrimaryType.FORCE_EXIT),
             action.hashes.evidenceBundleHash
+        );
+        // 2026-06-17: acknowledgedRisks must match live degraded bits (not cosmetic).
+        LoopV1ActionValidation.validateLiveStateBitmap(
+            registry,
+            action.identity.market,
+            action.identity.owner,
+            uint8(LoopV1Types.PrimaryType.FORCE_EXIT),
+            0,
+            action.bounds.acknowledgedRisks
         );
         _requireMarketParams(action.identity.market, action.marketParams);
         if (LoopV1Hashing.hashForceExit(action, domainSeparator) != digest) revert LoopV1Errors.DigestTypeMismatch();

@@ -13,7 +13,8 @@ export const IndexerConfigSchema = z.object({
   rpcUrl: z.string().url(),
   rpcFallbackUrls: z.array(z.string().url()).default([]),
   startBlock: z.coerce.bigint(),
-  confirmationBlocks: z.coerce.number().int().nonnegative().default(2),
+  // Spec / 2026-06-17 audit: default was 2 (too low vs reorg depth). Floor at 2, default 10.
+  confirmationBlocks: z.coerce.number().int().min(2).default(10),
   pollIntervalMs: z.coerce.number().int().positive().default(2000),
   reorgDepth: z.coerce.number().int().nonnegative().default(64),
   databasePath: z.string().default("./data/indexer.db"),

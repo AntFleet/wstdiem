@@ -37,7 +37,7 @@ test.describe("Evidence download (§13.4 row 20)", () => {
     ).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "download button triggers a JSON download with canonical evidence",
     async ({ page }) => {
       // FIXME deferred: needs the SDK's getMarketEvidence to resolve
@@ -52,7 +52,7 @@ test.describe("Evidence download (§13.4 row 20)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "copy button writes canonical JSON to clipboard",
     async () => {
       // FIXME deferred: same dependency as download — bundle needs to resolve.

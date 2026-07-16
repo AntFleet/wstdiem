@@ -125,10 +125,25 @@ interface ILoopV1Events {
     event RegistryConfigBatchCommitted(
         uint256 indexed version, bytes32 indexed root, address indexed committer, uint16 opsCount
     );
+    /// @notice Post-bootstrap config batch queued; apply after REGISTRY_TIMELOCK_BLOCKS.
+    event RegistryConfigBatchQueued(
+        uint256 indexed version,
+        bytes32 indexed root,
+        address indexed committer,
+        uint16 opsCount,
+        uint256 effectiveBlock
+    );
+    event RegistryConfigBatchCancelled(uint256 indexed version, bytes32 indexed root, address indexed canceller);
+    /// @notice One-way: after close, batchUpdate only queues; applyBatchUpdate required.
+    event BootstrapClosed(uint256 blockNumber);
     event ExternalFingerprintUpdateQueued(
         bytes32 indexed integrationId, bytes32 fingerprintHash, uint256 effectiveBlock
     );
     event ExternalFingerprintUpdateApplied(bytes32 indexed integrationId, bytes32 fingerprintHash);
+    /// @notice Critical role rotation queued (F22). roleId: 1=indexer, 2=anchor, 3=guardian, 4=governance, 5=harvest.
+    event CriticalRoleUpdateQueued(uint8 indexed roleId, address indexed next, uint256 effectiveBlock);
+    event CriticalRoleUpdateApplied(uint8 indexed roleId, address indexed previous, address indexed next);
+    event SpendAllowlistEnforcementChanged(bool enforced);
     event ReclosedIntegration(bytes32 indexed integrationId);
     event OwnerActivityRecorded(address indexed owner, uint256 indexed blockNumber);
     event HarvestObserved(bytes32 indexed market, uint256 indexed blockNumber, bytes32 indexed topic0);

@@ -83,7 +83,13 @@ contract MockFingerprintBootstrapper {
         registry.batchUpdate(ops, registry.registryVersion() + 1, keccak256("wstdiem.mock.fingerprints"));
     }
 
+    /// @notice Accept Ownable2Step ownership after the deployer proposes this bootstrapper.
+    function acceptRegistryOwnership() external onlyOperator {
+        registry.acceptOwnership();
+    }
+
     /// @notice Hand registry ownership back (to governance / the deployer) after the bootstrap.
+    /// @dev Ownable2Step: `to` must call `acceptOwnership()` to complete the transfer.
     function transferRegistryOwnership(address to) external onlyOperator {
         registry.transferOwnership(to);
     }

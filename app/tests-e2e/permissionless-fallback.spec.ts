@@ -19,7 +19,7 @@ test.describe("Permissionless fallback (§13.4 row 10)", () => {
     await expect(page.getByTestId(AUTOMATION.disconnected)).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "KEEPER_PERMISSIONLESS policy surfaces the badge in LivePolicies",
     async ({ page }) => {
       // FIXME deferred: needs wallet connect + seeded permissionless policy

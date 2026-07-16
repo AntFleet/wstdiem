@@ -7,7 +7,7 @@
 import { test } from "@playwright/test";
 
 test.describe("SDK ↔ contract calldata parity (§13.4 row 21)", () => {
-  test.fixme(
+  test.skip(
     "decodeCalldata round-trip matches the build",
     async () => {
       // FIXME deferred: needs forge artifacts in workspace root
@@ -18,7 +18,7 @@ test.describe("SDK ↔ contract calldata parity (§13.4 row 21)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "every Action shape produces a calldata-hash matching on-chain verifier",
     async () => {
       // FIXME deferred: same dependency on forge artifacts.

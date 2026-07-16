@@ -7,6 +7,7 @@ import {LoopV1Types} from "../../contracts/v2/libraries/LoopV1Types.sol";
 library DeploymentManifest {
     uint8 internal constant OP_SET_MARKET_PARAMS = 1;
     uint8 internal constant OP_SET_CANONICAL_SOURCE = 2;
+    uint8 internal constant OP_SET_REQUIRED_EVIDENCE_SOURCE_SET = 3;
     uint8 internal constant OP_SET_EXECUTOR_FOR = 4;
     uint8 internal constant OP_SET_LOOP_AUTHORIZATION = 5;
     uint8 internal constant OP_SET_LOOP_FORCE_EXIT_AUTHORIZER = 6;
@@ -82,7 +83,8 @@ library DeploymentManifest {
         pure
         returns (ILoopRegistry.BatchOp[] memory ops)
     {
-        ops = new ILoopRegistry.BatchOp[](26);
+        // Baseline wiring + spenders (F31) + required evidence sets (2026-06-17 High).
+        ops = new ILoopRegistry.BatchOp[](48);
         uint256 i;
         bytes32 market = config.market.id;
         LoopV1Types.MorphoMarketParams memory params = LoopV1Types.MorphoMarketParams({
@@ -131,11 +133,75 @@ library DeploymentManifest {
         ops[i++] = _op(OP_SET_UNISWAP_V3_FLASH_POOL, abi.encode(market, config.market.uniswapV3FlashPool));
         ops[i++] = _op(OP_SET_UNISWAP_V3_FLASH_FEE_TIER, abi.encode(market, config.market.uniswapV3FlashFeeTier));
         ops[i++] = _op(OP_SET_FORCE_EXIT_BUFFER_BPS, abi.encode(uint256(0)));
+        // Morpho spenders (authorization approves Morpho for loan/collateral tokens per action).
         ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.OPEN), config.market.loanToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.OPEN), config.market.collateralToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.loanToken, config.market.morpho);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.collateralToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.EXIT), config.market.loanToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.EXIT), config.market.collateralToken, config.market.morpho);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), config.market.loanToken, config.market.morpho);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), config.market.collateralToken, config.market.morpho);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), config.market.loanToken, config.market.morpho);
         ops[i++] = _opSpender(
-            uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.collateralToken, config.market.curvePool
+            uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), config.market.collateralToken, config.market.morpho
         );
+        // Vault / Curve external spenders used by executor approvals.
         ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.OPEN), config.market.loanToken, config.market.wstDiemVault);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.loanToken, config.market.wstDiemVault);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.REBALANCE), config.market.collateralToken, config.market.curvePool);
+        ops[i++] = _opSpender(uint8(LoopV1Types.PrimaryType.EXIT), config.market.collateralToken, config.market.curvePool);
+        ops[i++] =
+            _opSpender(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), config.market.collateralToken, config.market.curvePool);
+        ops[i++] = _opSpender(
+            uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), config.market.collateralToken, config.market.curvePool
+        );
+        // Required evidence sets — exact order matches LoopRegistry._requiredSourceIdsForPrimaryType
+        // (already sorted by sourceId hash for I-70).
+        ops[i++] = _opRequired(uint8(LoopV1Types.PrimaryType.OPEN), _openSources());
+        ops[i++] = _opRequired(uint8(LoopV1Types.PrimaryType.REBALANCE), _curveActionSources());
+        ops[i++] = _opRequired(uint8(LoopV1Types.PrimaryType.EXIT), _curveActionSources());
+        ops[i++] = _opRequired(uint8(LoopV1Types.PrimaryType.FORCE_EXIT), _curveActionSources());
+        ops[i++] = _opRequired(uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC), _curveActionSources());
+
+        // Trim unused slots.
+        assembly {
+            mstore(ops, i)
+        }
+    }
+
+    /// @dev OPEN evidence schedule (no Curve) — same as LoopRegistry._requiredSourceIdsForPrimaryType.
+    function _openSources() private pure returns (bytes32[] memory sources) {
+        sources = new bytes32[](5);
+        sources[0] = LoopV1Types.SOURCE_MORPHO_POSITION;
+        sources[1] = LoopV1Types.SOURCE_VAULT_NAV;
+        sources[2] = LoopV1Types.SOURCE_SEQUENCER_UPTIME;
+        sources[3] = LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
+        sources[4] = LoopV1Types.SOURCE_CHAINLINK_FEED;
+    }
+
+    /// @dev Exit / rebalance / force-exit / automation schedule (includes Curve).
+    function _curveActionSources() private pure returns (bytes32[] memory sources) {
+        sources = new bytes32[](6);
+        sources[0] = LoopV1Types.SOURCE_CURVE_QUOTE;
+        sources[1] = LoopV1Types.SOURCE_MORPHO_POSITION;
+        sources[2] = LoopV1Types.SOURCE_VAULT_NAV;
+        sources[3] = LoopV1Types.SOURCE_SEQUENCER_UPTIME;
+        sources[4] = LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
+        sources[5] = LoopV1Types.SOURCE_CHAINLINK_FEED;
+    }
+
+    function _opRequired(uint8 primaryType, bytes32[] memory sourceIds)
+        private
+        pure
+        returns (ILoopRegistry.BatchOp memory)
+    {
+        return _op(OP_SET_REQUIRED_EVIDENCE_SOURCE_SET, abi.encode(primaryType, sourceIds));
     }
 
     function _op(uint8 code, bytes memory data) private pure returns (ILoopRegistry.BatchOp memory) {

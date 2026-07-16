@@ -133,7 +133,10 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             _tstore(CONTEXT_STEP_SLOT, bytes32(uint256(_tload(CONTEXT_STEP_SLOT)) + 1));
         }
 
-        if (tokenIn != address(0) && tokenAmount != 0) LoopV1TokenApproval.approve(tokenIn, morpho, tokenAmount);
+        if (tokenIn != address(0) && tokenAmount != 0) {
+            _requireAllowedSpender(primaryType, tokenIn, morpho);
+            LoopV1TokenApproval.approve(tokenIn, morpho, tokenAmount);
+        }
         (bool ok, bytes memory data) = morpho.call(morphoCalldata);
         if (tokenIn != address(0)) LoopV1TokenApproval.approve(tokenIn, morpho, 0);
         if (!ok) {
@@ -174,6 +177,14 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             msg.sender
         );
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
+        LoopV1ActionValidation.validateLiveStateBitmap(
+            registry,
+            action.identity.market,
+            action.identity.owner,
+            uint8(LoopV1Types.PrimaryType.OPEN),
+            1,
+            0
+        );
         _requireHighRisk(
             action.identity.owner,
             digest,
@@ -235,6 +246,14 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
         LoopV1ActionValidation.validateHarvest(
             registry, action.identity.market, uint8(LoopV1Types.PrimaryType.REBALANCE), action.bounds.maxDebtIncrease
+        );
+        LoopV1ActionValidation.validateLiveStateBitmap(
+            registry,
+            action.identity.market,
+            action.identity.owner,
+            uint8(LoopV1Types.PrimaryType.REBALANCE),
+            action.bounds.maxDebtIncrease,
+            0
         );
         if (highRisk) {
             _requireHighRisk(
@@ -411,13 +430,38 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         view
         returns (LoopV1Types.ValidationResult memory)
     {
+        _validateRevokeDigest(digest, sig, action);
+        return _result(action.identity, uint8(LoopV1Types.PrimaryType.REVOKE), 0, false);
+    }
+
+    /// @notice D-5: signed revoke entrypoint (authorization direct — no Morpho executor).
+    /// @dev Validates the EIP-712 Revoke digest then starts revocation grace for `bounds.policyId`.
+    ///      Anyone may submit; the signature must be the policy owner (EOA or EIP-1271).
+    function executeRevoke(bytes32 digest, bytes calldata sig, LoopV1EIP712.Revoke calldata action) external {
+        _validateRevokeDigest(digest, sig, action);
+        address owner = action.identity.owner;
+        uint64 policyId = action.bounds.policyId;
+        Policy storage policy = policies[owner][policyId];
+        if (policy.owner != owner) revert OwnableUnauthorizedAccount(owner);
+        if (policy.revocationBlock != 0) {
+            // Already revoking / revoked — idempotent success for the same digest path.
+            return;
+        }
+        policy.revocationBlock = uint64(block.number);
+        emit PolicyRevoking(owner, policyId, block.number);
+        emit WstdiemAuthorizationRevoked(owner, policyId, block.number);
+    }
+
+    function _validateRevokeDigest(bytes32 digest, bytes calldata sig, LoopV1EIP712.Revoke calldata action)
+        private
+        view
+    {
         LoopV1ActionValidation.validateIdentity(
             registry, action.identity, uint8(LoopV1Types.PrimaryType.REVOKE), address(this)
         );
         LoopV1ActionValidation.validateFreshness(registry, action.freshness, uint8(LoopV1Types.PrimaryType.REVOKE));
         if (LoopV1Hashing.hashRevoke(action, domainSeparator) != digest) revert LoopV1Errors.DigestTypeMismatch();
         if (!action.identity.owner.isValidSignatureNow(digest, sig)) revert LoopV1Errors.InvalidSignature();
-        return _result(action.identity, uint8(LoopV1Types.PrimaryType.REVOKE), 0, false);
     }
 
     /// @notice Validates NF-15 EIP-1271 preimage-display attestation for high-risk policies.
@@ -796,6 +840,26 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         if (data.length < 4) revert LoopV1Errors.MorphoSelectorForbidden();
         assembly {
             selector := calldataload(data.offset)
+        }
+    }
+
+    /// @dev F31/D-3: after bootstrap or when enforced, Morpho must be registered for the action type.
+    function _requireAllowedSpender(uint8 primaryType, address token, address spender) private view {
+        if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
+        ILoopRegistry.SpenderCheck memory check = registry.allowedSpender(primaryType, token, spender);
+        if (check.spender == address(0)) {
+            if (registry.spendAllowlistEnforced() || registry.bootstrapClosed()) {
+                revert LoopV1Errors.SpenderNotRegistered();
+            }
+            return;
+        }
+        if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();
+        if (check.runtimeCodeHash != bytes32(0)) {
+            bytes32 codehash;
+            assembly {
+                codehash := extcodehash(spender)
+            }
+            if (codehash != check.runtimeCodeHash) revert LoopV1Errors.BytecodeMismatch();
         }
     }
 }

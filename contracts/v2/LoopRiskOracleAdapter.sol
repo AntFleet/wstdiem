@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IEmergencyGuardian} from "./interfaces/IEmergencyGuardian.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopRiskOracleAdapter} from "./interfaces/ILoopRiskOracleAdapter.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
@@ -29,6 +30,7 @@ interface IOraclePriceReader {
 }
 
 interface IChainlinkFeedReader {
+    function decimals() external view returns (uint8);
     function latestRoundData()
         external
         view
@@ -59,18 +61,23 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
         LoopV1Types.MorphoMarketParams memory params = registry.marketParams(market);
         (uint256 borrowShares, uint256 collateral, bool positionOk) = _position(market, owner);
         (uint256 totalBorrowAssets, uint256 totalBorrowShares, bool marketOk) = _marketBorrowState(market);
-        state.debt = totalBorrowShares == 0 ? borrowShares : borrowShares * totalBorrowAssets / totalBorrowShares;
+        // Ceil shares→assets so HF/debt never understate the Morpho repay requirement.
+        state.debt = totalBorrowShares == 0
+            ? borrowShares
+            : (borrowShares * totalBorrowAssets + totalBorrowShares - 1) / totalBorrowShares;
         state.collateral = collateral;
         state.curveDepth = _curveDepth(market);
         state.utilizationBps = _utilizationBps(market);
         (uint256 oraclePrice, bool oracleOk) = _morphoOraclePrice(params.oracle);
         if (!positionOk || !marketOk || !oracleOk) oraclePrice = 0;
-        uint256 collateralValue = collateral * oraclePrice / WAD;
+        uint256 priceWad = _normalizeOraclePriceToWad(oraclePrice);
+        uint256 collateralValue = collateral * priceWad / WAD;
+        uint256 lltvWad = params.lltv <= 10_000 ? params.lltv * 1e14 : params.lltv;
         if (state.debt == 0) {
             state.healthFactor = type(uint256).max;
             state.liquidationDistanceBps = type(uint16).max;
         } else {
-            state.healthFactor = collateralValue * params.lltv / state.debt;
+            state.healthFactor = collateralValue * lltvWad / state.debt;
             if (state.healthFactor <= WAD) {
                 state.liquidationDistanceBps = 0;
             } else {
@@ -78,10 +85,11 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
                 state.liquidationDistanceBps = distance > type(uint16).max ? type(uint16).max : uint16(distance);
             }
         }
-        if (collateral == 0) {
+        // D-6: LTV-style leverage in bps of debt / collateralValue (price-adjusted), not raw units.
+        if (collateralValue == 0) {
             state.leverageBps = state.debt == 0 ? 0 : type(uint16).max;
         } else {
-            uint256 leverage = state.debt * 10_000 / collateral;
+            uint256 leverage = state.debt * 10_000 / collateralValue;
             state.leverageBps = leverage > type(uint16).max ? type(uint16).max : uint16(leverage);
         }
     }
@@ -104,7 +112,29 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
         } else if (debt != 0 && collateral == 0) {
             bitmap |= _bit(LoopV1Types.StateBit.MORPHO_OWNER_EVIDENCE_MISSING);
         }
+        // High-tier: fold EmergencyGuardian pause/incident into the live §7.1 bitmap so risk-up
+        // gates in validateLiveStateBitmap see the same surface as requireNotPaused.
+        bitmap |= _guardianBits();
         _requireKnownStateBitmap(bitmap);
+    }
+
+    function _guardianBits() private view returns (uint16 bits) {
+        address guardian = registry.emergencyGuardian();
+        if (guardian == address(0)) return 0;
+        try IEmergencyGuardian(guardian).isPaused(uint8(LoopV1Types.PrimaryType.OPEN)) returns (bool openPaused) {
+            if (openPaused) bits |= _bit(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE);
+        } catch {}
+        try IEmergencyGuardian(guardian).isPaused(uint8(LoopV1Types.PrimaryType.REBALANCE)) returns (bool rebalPaused)
+        {
+            if (rebalPaused) bits |= _bit(LoopV1Types.StateBit.PAUSE_OPEN_INCREASE);
+        } catch {}
+        try IEmergencyGuardian(guardian).incidentState() returns (LoopV1Types.IncidentState incident) {
+            if (incident == LoopV1Types.IncidentState.INVESTIGATING) {
+                bits |= _bit(LoopV1Types.StateBit.INCIDENT_INVESTIGATING);
+            } else if (incident == LoopV1Types.IncidentState.MITIGATING) {
+                bits |= _bit(LoopV1Types.StateBit.INCIDENT_MITIGATING);
+            }
+        } catch {}
     }
 
     function liquidationDistanceBps(bytes32 market, address owner) external view returns (uint16) {
@@ -132,8 +162,10 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
         status.blockNumber = block.number;
         status.stateBitmap = computeStateBitmap(market, address(0));
         (status.navPerShareWad,) = _navPerShare(market);
-        (status.morphoOraclePriceWad,) = _morphoOraclePrice(registry.marketParams(market).oracle);
-        status.externalPriceWad = _chainlinkAnswer(market);
+        (uint256 rawMorpho,) = _morphoOraclePrice(registry.marketParams(market).oracle);
+        // D-6: both oracle surfaces expose WAD, not raw venue scales (Morpho 1e36 / Chainlink 1e8).
+        status.morphoOraclePriceWad = _normalizeOraclePriceToWad(rawMorpho);
+        status.externalPriceWad = _chainlinkAnswerWad(market);
         status.curveImpliedPriceWad = 0;
         status.sequencerStatus =
             _sequencerDownOrGrace(market) ? LoopV1Types.SourceStatus.DEGRADED : LoopV1Types.SourceStatus.FRESH;
@@ -162,9 +194,38 @@ contract LoopRiskOracleAdapter is ILoopRiskOracleAdapter {
     {
         (uint256 borrowShares, uint256 collateral_, bool positionOk) = _position(market, owner);
         (uint256 totalBorrowAssets, uint256 totalBorrowShares, bool marketOk) = _marketBorrowState(market);
-        debt = totalBorrowShares == 0 ? borrowShares : borrowShares * totalBorrowAssets / totalBorrowShares;
+        debt = totalBorrowShares == 0
+            ? borrowShares
+            : (borrowShares * totalBorrowAssets + totalBorrowShares - 1) / totalBorrowShares;
         collateral = collateral_;
         ok = positionOk && marketOk;
+    }
+
+    /// @dev Morpho Blue 18/18 pairs quote ≈1e36; WAD mocks use 1e18. Threshold 1e30 separates them.
+    ///      Phase-1 markets are 18/18; non-18 pairs need registry-pinned scale (follow-up if added).
+    function _normalizeOraclePriceToWad(uint256 rawPrice) private pure returns (uint256) {
+        if (rawPrice == 0) return 0;
+        if (rawPrice >= 1e30) return rawPrice / 1e18;
+        return rawPrice;
+    }
+
+    /// @dev Chainlink USD feeds are typically 8 decimals; convert answer → WAD.
+    function _chainlinkAnswerWad(bytes32 market) private view returns (uint256) {
+        address feed = registry.canonicalSource(market, LoopV1Types.SOURCE_CHAINLINK_FEED);
+        if (feed == address(0)) return 0;
+        try IChainlinkFeedReader(feed).latestRoundData() returns (
+            uint80, int256 answer, uint256, uint256, uint80
+        ) {
+            if (answer <= 0) return 0;
+            uint8 dec = 8;
+            try IChainlinkFeedReader(feed).decimals() returns (uint8 d) {
+                dec = d;
+            } catch {}
+            if (dec >= 18) return uint256(answer) / (10 ** (dec - 18));
+            return uint256(answer) * (10 ** (18 - dec));
+        } catch {
+            return 0;
+        }
     }
 
     function _position(bytes32 market, address owner)

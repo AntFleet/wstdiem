@@ -41,6 +41,18 @@ interface IMorphoPositionMinimal {
         external
         view
         returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral);
+
+    function market(bytes32 market)
+        external
+        view
+        returns (
+            uint128 totalSupplyAssets,
+            uint128 totalSupplyShares,
+            uint128 totalBorrowAssets,
+            uint128 totalBorrowShares,
+            uint128 lastUpdate,
+            uint128 fee
+        );
 }
 
 interface IOraclePriceMinimal {
@@ -50,6 +62,9 @@ interface IOraclePriceMinimal {
 /// @notice Shared Phase 1 executor plumbing for flash callbacks, arming, approvals, and cleanup.
 abstract contract LoopExecutorBase is ILoopV1Events {
     uint256 internal constant BASE_CHAIN_ID = 8453;
+    /// @dev Morpho Blue oracle scale: price is 1e36-normalized for 18-decimal token pairs.
+    uint256 internal constant MORPHO_ORACLE_PRICE_SCALE = 1e36;
+    uint256 internal constant WAD = 1e18;
 
     bytes32 internal constant WSTDIEM_REENTRANCY_SLOT = keccak256("wstdiem.loop.executor.base.reentrancy.v1");
     bytes32 internal constant WSTDIEM_ARM_OPEN_SLOT = keccak256("wstdiem.loop.executor.v2.arm.Open.v1");
@@ -251,9 +266,34 @@ abstract contract LoopExecutorBase is ILoopV1Events {
         _tstore(WSTDIEM_REENTRANCY_SLOT, bytes32(0));
     }
 
-    function _approveExact(address token, address spender, uint256 amount) internal {
+    /// @notice Exact allowance with registry spender allowlist enforcement (D-3 always-on).
+    /// @dev Callers MUST pass the live action `primaryType`. The legacy 3-arg overload that
+    ///      skipped the check via `type(uint8).max` was removed — no production path may bypass.
+    function _approveExact(address token, address spender, uint256 amount, uint8 primaryType) internal {
+        _requireAllowedSpender(primaryType, token, spender);
         _safeApprove(token, spender, 0);
         _safeApprove(token, spender, amount);
+    }
+
+    function _requireAllowedSpender(uint8 primaryType, address token, address spender) internal view {
+        if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
+        ILoopRegistry.SpenderCheck memory check = loopRegistry.allowedSpender(primaryType, token, spender);
+        // D-3: enforced flag OR post-bootstrap always requires a registered row.
+        // Pre-bootstrap unit harnesses may leave the flag false and omit rows.
+        if (check.spender == address(0)) {
+            if (loopRegistry.spendAllowlistEnforced() || loopRegistry.bootstrapClosed()) {
+                revert LoopV1Errors.SpenderNotRegistered();
+            }
+            return;
+        }
+        if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();
+        if (check.runtimeCodeHash != bytes32(0)) {
+            bytes32 codehash;
+            assembly {
+                codehash := extcodehash(spender)
+            }
+            if (codehash != check.runtimeCodeHash) revert LoopV1Errors.BytecodeMismatch();
+        }
     }
 
     function _safeApprove(address token, address spender, uint256 amount) internal {
@@ -334,15 +374,37 @@ abstract contract LoopExecutorBase is ILoopV1Events {
     {
         address morpho = loopRegistry.morpho();
         if (morpho == address(0)) revert LoopV1Errors.MorphoEvidenceMissing();
+        uint256 borrowShares;
         try IMorphoPositionMinimal(morpho).position(market, owner) returns (
-            uint256, uint128 borrowShares, uint128 collateralAssets
+            uint256, uint128 borrowShares_, uint128 collateralAssets
         ) {
-            debt = uint256(borrowShares);
+            borrowShares = uint256(borrowShares_);
             collateral = uint256(collateralAssets);
         } catch {
             revert LoopV1Errors.MorphoEvidenceMissing();
         }
+        // Critical (2026-06-17 F01): Morpho stores borrow as shares. Convert to assets so repay,
+        // flash sizing, and HF use the interest-accrued debt, not raw share units.
+        debt = _borrowSharesToAssets(morpho, market, borrowShares);
         healthFactor = _healthFactorWad(debt, collateral, params);
+    }
+
+    function _borrowSharesToAssets(address morpho, bytes32 market, uint256 borrowShares)
+        internal
+        view
+        returns (uint256 assets)
+    {
+        if (borrowShares == 0) return 0;
+        try IMorphoPositionMinimal(morpho).market(market) returns (
+            uint128, uint128, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128, uint128
+        ) {
+            if (totalBorrowShares == 0) return borrowShares;
+            // Morpho Blue ceilings asset conversion on repay; use ceilDiv so we never under-repay.
+            return (borrowShares * uint256(totalBorrowAssets) + uint256(totalBorrowShares) - 1)
+                / uint256(totalBorrowShares);
+        } catch {
+            revert LoopV1Errors.MorphoEvidenceMissing();
+        }
     }
 
     function _healthFactorWad(uint256 debt, uint256 collateral, LoopV1Types.MorphoMarketParams memory params)
@@ -351,15 +413,24 @@ abstract contract LoopExecutorBase is ILoopV1Events {
         returns (uint256)
     {
         if (debt == 0) return type(uint256).max;
-        uint256 price = 1e18;
+        uint256 priceWad = WAD;
         if (params.oracle != address(0)) {
             try IOraclePriceMinimal(params.oracle).price() returns (uint256 oraclePrice) {
-                if (oraclePrice != 0) price = oraclePrice;
+                if (oraclePrice != 0) priceWad = _normalizeOraclePriceToWad(oraclePrice);
             } catch {}
         }
         uint256 lltvWad = params.lltv <= 10_000 ? params.lltv * 1e14 : params.lltv;
         if (lltvWad == 0) revert LoopV1Errors.HealthIndeterminate();
-        return collateral * price / 1e18 * lltvWad / debt;
+        // collateralValue (WAD units of loan token) * lltv / debt
+        return collateral * priceWad / WAD * lltvWad / debt;
+    }
+
+    /// @dev Accept Morpho-scale (≈1e36) or WAD-scale (1e18) oracle prices used by mocks.
+    function _normalizeOraclePriceToWad(uint256 rawPrice) internal pure returns (uint256) {
+        if (rawPrice == 0) return 0;
+        // Morpho Blue collateral/loan price for 18-decimal pairs is around 1e36.
+        if (rawPrice >= 1e30) return rawPrice / (MORPHO_ORACLE_PRICE_SCALE / WAD);
+        return rawPrice;
     }
 
     function _enforcePostState(FlashContext memory context, LoopV1Types.LoopActionResult memory result) internal view {

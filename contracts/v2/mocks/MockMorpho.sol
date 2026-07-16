@@ -14,8 +14,9 @@ interface IMockMintableToken {
 /// @dev Faithful to the Morpho Blue ABI selectors pinned in `MorphoSelectors`:
 ///      supplyCollateral / borrow / repay / withdrawCollateral / setAuthorization, plus the
 ///      `position`, `market`, and `idToMarketParams` views. Market id derivation matches
-///      Morpho (`keccak256(abi.encode(marketParams))`). Shares track assets 1:1 (no interest
-///      accrual) which is sufficient for open/exit smoke coverage against mocks.
+///      Morpho (`keccak256(abi.encode(marketParams))`). Shares track assets 1:1 by default;
+///      `accrueInterest` can raise totalBorrowAssets without minting shares so tests can prove
+///      shares→assets conversion (2026-06-17 Critical F01).
 ///      Authorization is recorded but not enforced (a testnet mock lends permissively).
 contract MockMorpho {
     struct Position {
@@ -92,19 +93,34 @@ contract MockMorpho {
     function repay(
         LoopV1Types.MorphoMarketParams calldata marketParams,
         uint256 assets,
-        uint256,
+        uint256 shares,
         address onBehalf,
         bytes calldata
     ) external returns (uint256 assetsRepaid, uint256 sharesRepaid) {
         bytes32 id = keccak256(abi.encode(marketParams));
         require(IMockMintableToken(marketParams.loanToken).transferFrom(msg.sender, address(this), assets), "repay");
         Position storage position = positions[id][onBehalf];
-        uint128 amount = uint128(assets);
-        position.borrowShares = amount >= position.borrowShares ? 0 : position.borrowShares - amount;
         Market storage market_ = markets[id];
-        market_.totalBorrowAssets = amount >= market_.totalBorrowAssets ? 0 : market_.totalBorrowAssets - amount;
-        market_.totalBorrowShares = amount >= market_.totalBorrowShares ? 0 : market_.totalBorrowShares - amount;
-        return (assets, assets);
+
+        // Morpho Blue: repay by assets converts to shares via market totals (supports interest accrual).
+        if (shares != 0) {
+            sharesRepaid = shares;
+        } else if (market_.totalBorrowAssets == 0 || market_.totalBorrowShares == 0) {
+            sharesRepaid = assets;
+        } else {
+            // Ceil shares burned so a full-asset repay clears residual share dust after accrual.
+            sharesRepaid =
+                (assets * uint256(market_.totalBorrowShares) + uint256(market_.totalBorrowAssets) - 1)
+                    / uint256(market_.totalBorrowAssets);
+        }
+        if (sharesRepaid > position.borrowShares) sharesRepaid = position.borrowShares;
+        position.borrowShares -= uint128(sharesRepaid);
+
+        uint256 assetsBurned = assets;
+        if (assetsBurned > market_.totalBorrowAssets) assetsBurned = market_.totalBorrowAssets;
+        market_.totalBorrowAssets -= uint128(assetsBurned);
+        market_.totalBorrowShares = uint128(uint256(market_.totalBorrowShares) - sharesRepaid);
+        return (assets, sharesRepaid);
     }
 
     function withdrawCollateral(
@@ -152,6 +168,13 @@ contract MockMorpho {
     {
         LoopV1Types.MorphoMarketParams storage p = marketParamsById[id];
         return (p.loanToken, p.collateralToken, p.oracle, p.irm, p.lltv);
+    }
+
+    /// @notice Increase market totalBorrowAssets without changing share supply (simulates accrual).
+    /// @dev Leaves position.borrowShares unchanged so true debt assets > shares (F01 regression).
+    function accrueInterest(bytes32 id, uint128 assets) external {
+        markets[id].totalBorrowAssets += assets;
+        markets[id].lastUpdate = uint128(block.timestamp);
     }
 }
 

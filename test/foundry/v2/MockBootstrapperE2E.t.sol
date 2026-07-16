@@ -12,7 +12,9 @@ import {MockFingerprintBootstrapper} from "../../../contracts/v2/mocks/MockFinge
 import {MockFingerprintLib} from "../../../contracts/v2/mocks/MockFingerprintLib.sol";
 import {DeploymentManifest} from "../../../script/v2/DeploymentManifest.sol";
 import {MockDeploymentKit} from "../../../script/v2/MockDeploymentKit.sol";
+import {ILoopRegistry} from "../../../contracts/v2/interfaces/ILoopRegistry.sol";
 import {DigestBuilder} from "./helpers/DigestBuilder.sol";
+import {EvidenceBuilder} from "./helpers/EvidenceBuilder.sol";
 
 /// @notice Proves the LIVE deploy path — deploy core, transfer registry ownership to the on-chain
 ///         `MockFingerprintBootstrapper`, and queue+apply fingerprints through it — yields a system
@@ -66,6 +68,7 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
             })
         );
         registry.transferOwnership(address(bootstrapper));
+        bootstrapper.acceptRegistryOwnership();
         bootstrapper.queueAll();
         // Cross the registry timelock, then apply through the bootstrapper (phase 2).
         vm.roll(block.number + REGISTRY_TIMELOCK_BLOCKS);
@@ -103,8 +106,9 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
                 uniswapV3FlashPool: config.market.uniswapV3FlashPool
             })
         );
-        // registry is currently owned by `bootstrapper`; move it to bs2 to queue+apply.
+        // registry is currently owned by `bootstrapper`; Ownable2Step handoff to bs2.
         bootstrapper.transferRegistryOwnership(address(bs2));
+        bs2.acceptRegistryOwnership();
         bs2.queueAll();
         vm.expectRevert();
         bs2.applyAll();
@@ -125,18 +129,28 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
     }
 
     function _open(uint248 nonceSlot, uint8 nonceBit) private returns (LoopV1Types.LoopActionResult memory result) {
-        LoopV1EIP712.Open memory action = _openAction(nonceSlot, nonceBit);
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.OPEN), owner, market
+        );
+        LoopV1EIP712.Open memory action = _openAction(nonceSlot, nonceBit, bundleHash);
         bytes32 digest = auth.openDigest(action);
-        result = executor.executeOpen(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+        result = executor.executeOpen(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
     }
 
     function _exit(uint248 nonceSlot, uint256 collateral) private returns (LoopV1Types.LoopActionResult memory result) {
-        LoopV1EIP712.Exit memory action = _exitAction(nonceSlot, 1, collateral);
+        (LoopV1Types.ActionEvidence memory evidence, bytes32 bundleHash) = EvidenceBuilder.build(
+            ILoopRegistry(address(registry)), uint8(LoopV1Types.PrimaryType.EXIT), owner, market
+        );
+        LoopV1EIP712.Exit memory action = _exitAction(nonceSlot, 1, collateral, bundleHash);
         bytes32 digest = auth.exitDigest(action);
-        result = executor.executeExit(action, _sign(OWNER_PK, digest), _emptyEvidence(), bytes32(0));
+        result = executor.executeExit(action, _sign(OWNER_PK, digest), evidence, bytes32(0));
     }
 
-    function _openAction(uint248 nonceSlot, uint8 nonceBit) private view returns (LoopV1EIP712.Open memory action) {
+    function _openAction(uint248 nonceSlot, uint8 nonceBit, bytes32 evidenceBundleHash)
+        private
+        view
+        returns (LoopV1EIP712.Open memory action)
+    {
         action.identity = _identity(nonceSlot, nonceBit);
         action.freshness = _freshness();
         action.executionKind = LoopV1Types.ExecutionKind.KEEPER_PERMISSIONLESS;
@@ -145,10 +159,10 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
         action.bounds.minWstDiemReceived = 1 ether;
         action.bounds.minBorrowedDiem = 1;
         action.bounds.maxBorrowedDiem = MAX_BORROW;
-        action.hashes.evidenceBundleHash = _emptyEvidenceHash();
+        action.hashes.evidenceBundleHash = evidenceBundleHash;
     }
 
-    function _exitAction(uint248 nonceSlot, uint8 nonceBit, uint256 collateral)
+    function _exitAction(uint248 nonceSlot, uint8 nonceBit, uint256 collateral, bytes32 evidenceBundleHash)
         private
         view
         returns (LoopV1EIP712.Exit memory action)
@@ -161,7 +175,7 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
         action.bounds.minRepayment = 0;
         action.bounds.maxCollateralSold = collateral;
         action.bounds.repayOnly = false;
-        action.hashes.evidenceBundleHash = _emptyEvidenceHash();
+        action.hashes.evidenceBundleHash = evidenceBundleHash;
     }
 
     function _identity(uint248 nonceSlot, uint8 nonceBit) private view returns (LoopV1EIP712.ActionIdentity memory) {
@@ -196,28 +210,6 @@ contract MockBootstrapperE2ETest is Test, MockDeploymentKit {
             irm: config.market.irm,
             lltv: config.market.lltv
         });
-    }
-
-    function _emptyEvidence() private view returns (LoopV1Types.ActionEvidence memory evidence) {
-        evidence.owner = owner;
-        evidence.market = market;
-        evidence.blockNumber = block.number;
-    }
-
-    function _emptyEvidenceHash() private view returns (bytes32) {
-        LoopV1Types.EvidenceSource[] memory sources = new LoopV1Types.EvidenceSource[](0);
-        return keccak256(
-            abi.encode(
-                LoopV1EIP712.EVIDENCE_BUNDLE_TYPEHASH,
-                bytes32(0),
-                bytes32(0),
-                owner,
-                market,
-                block.number,
-                uint16(0),
-                keccak256(abi.encode(sources))
-            )
-        );
     }
 
     function _sign(uint256 privateKey, bytes32 digest) private pure returns (bytes memory) {

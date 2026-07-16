@@ -74,6 +74,7 @@ contract DeployMocksSepolia is Script, MockDeploymentKit {
             })
         );
         registry.transferOwnership(address(bootstrapper));
+        bootstrapper.acceptRegistryOwnership();
         bootstrapper.queueAll();
         vm.stopBroadcast();
 

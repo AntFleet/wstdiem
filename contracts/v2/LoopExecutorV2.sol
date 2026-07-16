@@ -274,7 +274,7 @@ contract LoopExecutorV2 is LoopExecutorBase {
         uint256 collateralAssets = context.supplyCollateralAssets;
         if (context.useVaultDeposit && context.flashAmount != 0) {
             address vault = loopRegistry.wstDiemVault(context.market);
-            _approveExact(context.params.loanToken, vault, context.flashAmount);
+            _approveExact(context.params.loanToken, vault, context.flashAmount, context.primaryType);
             collateralAssets = IERC4626Minimal(vault).deposit(context.flashAmount, address(this));
         }
         if (collateralAssets != 0) {
@@ -360,7 +360,7 @@ contract LoopExecutorV2 is LoopExecutorBase {
 
     function _curveSwapWstToDiem(FlashContext memory context, uint256 flashFee) private {
         address curve = loopRegistry.curvePool(context.market);
-        _approveExact(context.params.collateralToken, curve, context.withdrawCollateralAssets);
+        _approveExact(context.params.collateralToken, curve, context.withdrawCollateralAssets, context.primaryType);
         uint256 minDy = context.flashAmount + flashFee + context.protocolFeeCap + context.automationFeeCap;
         uint256 diemReceived = ICurvePoolMinimal(curve).exchange(1, 0, context.withdrawCollateralAssets, minDy);
         if (diemReceived < minDy) revert LoopV1Errors.CurveSlippageExceeded();

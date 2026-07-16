@@ -17,7 +17,7 @@ test.describe("Stale-quote blocking (§13.4 row 16)", () => {
     await expect(page.getByTestId(LOOP.openPreviewCta)).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "QuoteStale gate surfaces sign-override reason in drawer footer",
     async () => {
       // FIXME deferred: requires the preview drawer to receive a live

@@ -75,6 +75,15 @@ contract PB3MorphoPosition {
     function position(bytes32, address) external view returns (uint256 supplyShares, uint128 debt, uint128 coll) {
         return (0, borrowShares, collateral);
     }
+
+    /// @dev 1:1 shares→assets so executor F01 conversion matches the historical test semantics.
+    function market(bytes32)
+        external
+        view
+        returns (uint128, uint128, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128, uint128)
+    {
+        return (0, 0, borrowShares, borrowShares, 0, 0);
+    }
 }
 
 contract PB3PullingMorpho {
@@ -144,6 +153,10 @@ contract PB3RiskAdapter {
 
     function currentUtilizationBps(bytes32) external view returns (uint16) {
         return utilizationBps;
+    }
+
+    function computeStateBitmap(bytes32, address) external pure returns (uint16) {
+        return 0;
     }
 }
 

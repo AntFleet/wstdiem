@@ -47,6 +47,19 @@ library LoopV1Validation {
             if (canonical != address(0) && source.sourceAddress != canonical) {
                 revert LoopV1Errors.EvidenceSourceAddressMismatch();
             }
+            // 2026-06-17 High: EvidenceSource.status was hashed but never asserted.
+            // Non-force paths require FRESH. ForceExit may carry DEGRADED when the
+            // live bitmap / acknowledgedRisks path has already authorized overrides.
+            if (uint8(source.status) == uint8(LoopV1Types.SourceStatus.FRESH)) {
+                // ok
+            } else if (
+                primaryType == uint8(LoopV1Types.PrimaryType.FORCE_EXIT)
+                    && uint8(source.status) == uint8(LoopV1Types.SourceStatus.DEGRADED)
+            ) {
+                // ok
+            } else {
+                revert LoopV1Errors.EvidenceStale();
+            }
             uint256 threshold = registry.sourceFreshnessThreshold(source.sourceId);
             if (threshold != 0 && block.number > source.lastUpdateBlock + threshold) {
                 revert LoopV1Errors.EvidenceStale();

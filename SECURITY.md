@@ -74,7 +74,15 @@ No protocol-level insurance policy is in place at the time of this document. Dec
 
 ## External audit
 
-This release is undergoing external audit prior to mainnet deployment. Audit reports will be published in this repository under `audit/` once available. Do not point production keepers or production capital at these contracts before the audit gate is closed and an audited deployment is published.
+**Gate status: CLOSED** for production capital. Process scaffolding (scope, gate-open checklist, finding tracker template) lives under [`audit/`](audit/). That directory is **not** a substitute for a third-party firm report.
+
+When a firm engagement completes:
+
+1. Publish the report under `audit/YYYY-MM-DD-<firm>/`
+2. Complete [`audit/CHECKLIST-GATE-OPEN.md`](audit/CHECKLIST-GATE-OPEN.md)
+3. Only then clear the protocol audit gate per `PROTOCOL.md` §5.4 / `LAUNCH_READINESS.md` T10
+
+Do not point production keepers or production capital at these contracts before the audit gate is closed and an audited deployment is published. Base Sepolia mock deploys (if any) are **testnet only**.
 
 ## Hall of Fame
 

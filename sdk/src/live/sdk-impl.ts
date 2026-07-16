@@ -33,6 +33,14 @@ import {
   type Log,
   type PublicClient,
 } from "viem";
+import { createCanonicalEvidenceResolver } from "./canonical-evidence-resolver.js";
+import { createLiveEvidenceResolver } from "./live-evidence-resolver.js";
+import {
+  assertForceExitRisksCoverRequired,
+  forceExitBlockedByMultiCritical,
+  requiredForceExitRiskBitsFromStateBitmap,
+} from "../force-exit/waivers.js";
+import { LOOP_RISK_ORACLE_READ_ABI } from "./abis.js";
 import type {
   Action,
   AutomationExecAction,
@@ -280,6 +288,20 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     validateContractsConfig(config.contracts);
     this.contracts = freezeContracts(config.contracts);
     this.config = config;
+    // 2026-06-17: production apps should set requireIndexerSignatures so the
+    // SDK cannot silently trust an unsigned indexer over the network.
+    if (config.requireIndexerSignatures) {
+      if (!config.indexerSigningKey) {
+        throw new Error(
+          "requireIndexerSignatures=true but indexerSigningKey is missing",
+        );
+      }
+      if (!config.indexerVerifier) {
+        throw new Error(
+          "requireIndexerSignatures=true but indexerVerifier is missing",
+        );
+      }
+    }
     this.indexer = new IndexerClient({
       baseUrl: config.indexerBaseUrl,
       ...(config.fetch !== undefined ? { fetch: config.fetch } : {}),
@@ -302,6 +324,27 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       ? this.rpcQuorum.asPublicClient()
       : config.publicClient;
     this.registry = new RegistryReader(this.readClient, config.contracts.loopRegistry);
+    // When no evidenceResolver is supplied:
+    //   - preferPlaceholderEvidence → lightweight FRESH placeholders (tests)
+    //   - otherwise live venue resolver (D-4 richer values); on RPC failure
+    //     individual sources fall back to bound placeholders inside the live
+    //     resolver. Production apps should leave preferPlaceholderEvidence unset.
+    if (!this.config.evidenceResolver) {
+      const preferPlaceholder =
+        this.config.preferPlaceholderEvidence === true ||
+        // Single-client test harnesses typically lack full venue mocks.
+        (this.config.allowSingleClientReads === true &&
+          this.config.preferPlaceholderEvidence !== false);
+      this.config = {
+        ...this.config,
+        evidenceResolver: preferPlaceholder
+          ? createCanonicalEvidenceResolver(this.registry)
+          : createLiveEvidenceResolver({
+              registry: this.registry,
+              client: this.readClient,
+            }),
+      };
+    }
     this.authorization = new AuthorizationReader(
       this.readClient,
       config.contracts.loopAuthorization,
@@ -371,11 +414,15 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     const rpcQuorum = await this.evaluateRpcQuorum();
     const singleClientAllowed = this.config.allowSingleClientReads === true;
     if ((!this.rpcQuorum && !singleClientAllowed) || (this.rpcQuorum && rpcQuorum.status !== "ok")) {
-      const currentBlockEarly = await (
-        this.rpcQuorum
-          ? this.config.publicClient.getBlockNumber()
-          : this.readClient.getBlockNumber()
-      );
+      // D-8: prefer quorum-wrapped readClient for blockNumber even on the
+      // short-circuit path; only fall back to single publicClient when
+      // quorum is unavailable (and single-client was already allowed).
+      let currentBlockEarly: bigint;
+      try {
+        currentBlockEarly = await this.readClient.getBlockNumber();
+      } catch {
+        currentBlockEarly = await this.config.publicClient.getBlockNumber();
+      }
       // PR-17 Gap 2: even in the short-circuit blocked path, surface the
       // G-PM gate evaluation so the consumer sees G-PM-3 fail with
       // RpcQuorumDegraded (rather than the empty `gateStatuses: []` that
@@ -412,12 +459,14 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     // sequencer / anchor reads.
     const currentBlock = await this.readClient.getBlockNumber();
     const pinned = currentBlock;
-    const [snapshot, head, sequencer, perActionDecisions] = await Promise.all([
-      this.indexer.snapshotsLatest(),
-      this.indexer.health(),
-      this.readSequencer(market, pinned),
-      this.evaluatePerActionReadiness(market, pinned),
-    ]);
+    const [snapshot, head, sequencer, perActionDecisions, liveBitmap] =
+      await Promise.all([
+        this.indexer.snapshotsLatest(),
+        this.indexer.health(),
+        this.readSequencer(market, pinned),
+        this.evaluatePerActionReadiness(market, pinned),
+        this.readLiveStateBitmap(market, owner),
+      ]);
     const indexerAnchor = this.classifyAnchor(snapshot, head);
     // A5-3 + PR-13 audit C-1/C-2/H-3: cross-check the indexer's anchor claim
     // against the on-chain LoopAnchorRegistry, pinned to the planning block.
@@ -443,7 +492,12 @@ export class LiveWstdiemSdk implements WstdiemSdk {
           blockNumber: snapshot.blockNumber,
           blockHash: snapshot.blockHash,
         },
-        { planningBlock: asBlockNumber(pinned), expectedSubmitter },
+        {
+          planningBlock: asBlockNumber(pinned),
+          expectedSubmitter,
+          // Audit B: verify indexer emission blockHash against RPC when fresh.
+          publicClient: this.readClient,
+        },
       );
       if (!result.ok) {
         throw new Error(
@@ -460,12 +514,18 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       g2: { anchor: indexerAnchor },
       g3: { quorum: rpcQuorum },
     });
+    // Audit B: under strict anchor mode, non-fresh anchors block every action
+    // class (G-PM-2 is not only diagnostic — it fails closed on perAction).
+    const perAction =
+      this.strictAnchor && indexerAnchor.status !== "fresh"
+        ? this.gatePerActionOnAnchor(perActionDecisions, indexerAnchor)
+        : perActionDecisions;
     return {
       market,
       ...(owner !== undefined ? { owner } : {}),
       blockNumber: asBlockNumber(currentBlock),
-      stateBitmap: asStateBitmap(0),
-      perAction: perActionDecisions,
+      stateBitmap: asStateBitmap(liveBitmap),
+      perAction,
       sources: [],
       sequencer: sequencer.status,
       indexerAnchor,
@@ -501,6 +561,26 @@ export class LiveWstdiemSdk implements WstdiemSdk {
         decision: "blocked",
         predicates: [...d.predicates, predicate],
         errors: [...d.errors, "RpcQuorumDegraded"],
+      };
+    }
+    return out as Record<PrimaryType, PerActionReadiness>;
+  }
+
+  /** Fail-closed per-action map when G-PM-2 indexer anchor is not fresh. */
+  private gatePerActionOnAnchor(
+    decisions: Record<PrimaryType, PerActionReadiness>,
+    anchor: AnchorFreshness,
+  ): Record<PrimaryType, PerActionReadiness> {
+    const predicate = `indexerAnchor=${anchor.status}`;
+    const out: Partial<Record<PrimaryType, PerActionReadiness>> = {};
+    for (const [pt, d] of Object.entries(decisions) as Array<[
+      PrimaryType,
+      PerActionReadiness,
+    ]>) {
+      out[pt] = {
+        decision: "blocked",
+        predicates: [...d.predicates, predicate],
+        errors: [...d.errors, "IndexerAnchorStale"],
       };
     }
     return out as Record<PrimaryType, PerActionReadiness>;
@@ -925,7 +1005,11 @@ export class LiveWstdiemSdk implements WstdiemSdk {
           blockNumber: snapshot.blockNumber,
           blockHash: snapshot.blockHash,
         },
-        { planningBlock: asBlockNumber(pinned), expectedSubmitter },
+        {
+          planningBlock: asBlockNumber(pinned),
+          expectedSubmitter,
+          publicClient: this.readClient,
+        },
       );
       if (!result.ok) {
         throw new Error(
@@ -1443,17 +1527,121 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     transaction: { to: Address; data: Hex };
   }> {
     const to = this.config.contracts.loopAuthorization;
-    const data =
-      typeof target === "bigint"
-        ? encodeFunctionData({
-            abi: [
-              { type: "function", name: "revoke", inputs: [{ type: "uint64" }], outputs: [], stateMutability: "nonpayable" },
-            ] as const,
-            functionName: "revoke",
-            args: [target],
-          }) as Hex
-        : ("0x" as Hex);
-    return { typedData: { target }, transaction: { to, data } };
+    // D-5: policyId → owner-direct revoke(uint64). ActionDigest must not
+    // return empty calldata — require an explicit cancelNonce envelope or
+    // use buildRevokeTransaction for signed executeRevoke.
+    if (typeof target === "bigint") {
+      const data = encodeFunctionData({
+        abi: [
+          {
+            type: "function",
+            name: "revoke",
+            inputs: [{ type: "uint64" }],
+            outputs: [],
+            stateMutability: "nonpayable",
+          },
+        ] as const,
+        functionName: "revoke",
+        args: [target],
+      }) as Hex;
+      return { typedData: { target }, transaction: { to, data } };
+    }
+    throw new Error(
+      "revokeAuthorization(ActionDigest) is unsupported — use revokeAuthorization(policyId) " +
+        "for owner-direct revoke, or buildRevokeExecuteTransaction() for signed executeRevoke.",
+    );
+  }
+
+  /**
+   * D-5: encode LoopAuthorization.executeRevoke(digest, sig, action) for a
+   * pre-signed Revoke envelope. Does not re-sign; caller attaches `signature`.
+   */
+  async buildRevokeExecuteTransaction(args: {
+    digest: Hex;
+    signature: Hex;
+    action: {
+      identity: unknown;
+      freshness: unknown;
+      executionKind: number;
+      bounds: { policyId: bigint; policyClass: number; effectiveBlock: bigint };
+      hashes: unknown;
+    };
+  }): Promise<{ to: Address; data: Hex; value: 0n; digest: Hex }> {
+    const data = encodeFunctionData({
+      abi: [
+        {
+          type: "function",
+          name: "executeRevoke",
+          inputs: [
+            { name: "digest", type: "bytes32" },
+            { name: "sig", type: "bytes" },
+            {
+              name: "action",
+              type: "tuple",
+              components: [
+                {
+                  name: "identity",
+                  type: "tuple",
+                  components: [
+                    { name: "owner", type: "address" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "executor", type: "address" },
+                    { name: "market", type: "bytes32" },
+                    { name: "verifyingContract", type: "address" },
+                    { name: "registryVersion", type: "uint256" },
+                    { name: "registryMerkleRoot", type: "bytes32" },
+                    { name: "policyId", type: "uint64" },
+                    { name: "nonceSlot", type: "uint248" },
+                    { name: "nonceBit", type: "uint8" },
+                  ],
+                },
+                {
+                  name: "freshness",
+                  type: "tuple",
+                  components: [
+                    { name: "quoteBlockNumber", type: "uint256" },
+                    { name: "maxQuoteAgeBlocks", type: "uint256" },
+                    { name: "deadline", type: "uint256" },
+                    { name: "maxRpcBlockLag", type: "uint16" },
+                  ],
+                },
+                { name: "executionKind", type: "uint8" },
+                {
+                  name: "bounds",
+                  type: "tuple",
+                  components: [
+                    { name: "policyId", type: "uint64" },
+                    { name: "policyClass", type: "uint8" },
+                    { name: "effectiveBlock", type: "uint256" },
+                  ],
+                },
+                {
+                  name: "hashes",
+                  type: "tuple",
+                  components: [
+                    { name: "evidenceBundleHash", type: "bytes32" },
+                    { name: "actionId", type: "bytes32" },
+                    { name: "evidenceSetId", type: "bytes32" },
+                    { name: "reserved0", type: "bytes32" },
+                    { name: "reserved1", type: "bytes32" },
+                  ],
+                },
+              ],
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+      ] as const,
+      functionName: "executeRevoke",
+      args: [args.digest, args.signature, args.action as never],
+    }) as Hex;
+    return {
+      to: this.config.contracts.loopAuthorization,
+      data,
+      value: 0n,
+      digest: args.digest,
+    };
   }
 
   // ─── T2a: envelope derivation from friendly inputs ──────────────────────
@@ -1527,6 +1715,23 @@ export class LiveWstdiemSdk implements WstdiemSdk {
   ): Promise<ForceExitAction> {
     // ForceExit binds to the distinct LoopForceExitAuthorizer domain +
     // LoopForceExitExecutor, per §A6.2.1.
+    // Audit C: refuse to build a digest that would revert on-chain for
+    // missing risk waivers or I-67 multi-critical overbreadth.
+    const liveBitmap = await this.readLiveStateBitmap(
+      input.market,
+      input.owner,
+    );
+    const requiredRisks = requiredForceExitRiskBitsFromStateBitmap(liveBitmap);
+    if (forceExitBlockedByMultiCritical(requiredRisks)) {
+      throw new Error(
+        `ForceExit blocked: live state bitmap 0x${liveBitmap.toString(16)} ` +
+          `requires multiple critical risk overrides (0x${requiredRisks.toString(16)}). ` +
+          `Phase-1 I-67 allows only one critical override per digest — wait for ` +
+          `market recovery to a single-degraded or healthy state.`,
+      );
+    }
+    assertForceExitRisksCoverRequired(input.acknowledgedRisks, requiredRisks);
+
     const base = await this.deriveEnvelopeBase(input, "ForceExit");
     const slippageBps = input.slippageBps ?? asBasisPoints(DEFAULT_SLIPPAGE_BPS);
     const draft: ForceExitAction = {
@@ -1540,6 +1745,38 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       bounds: this.deriveForceExitBounds(input, slippageBps),
     };
     return this.withEvidenceHash(draft, base.pinned);
+  }
+
+  /**
+   * Live §7.1 state bitmap from LoopRiskOracleAdapter.computeStateBitmap.
+   * Returns 0 when the adapter is missing or the call fails (unit harnesses).
+   */
+  async readLiveStateBitmap(
+    market: MarketId,
+    owner?: Address,
+  ): Promise<number> {
+    const adapter = this.contracts.loopRiskOracleAdapter;
+    if (
+      !adapter ||
+      adapter === "0x0000000000000000000000000000000000000000"
+    ) {
+      return 0;
+    }
+    try {
+      const raw = (await this.readClient.readContract({
+        address: adapter,
+        abi: LOOP_RISK_ORACLE_READ_ABI,
+        functionName: "computeStateBitmap",
+        args: [
+          market,
+          (owner ??
+            "0x0000000000000000000000000000000000000000") as Address,
+        ],
+      })) as number | bigint;
+      return Number(raw) & 0xffff;
+    } catch {
+      return 0;
+    }
   }
 
   /** Source registryVersion + merkleRoot (registry reader), a fresh quote

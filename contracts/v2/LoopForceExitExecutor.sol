@@ -131,7 +131,7 @@ contract LoopForceExitExecutor is LoopExecutorBase {
             )
         );
         address curve = loopRegistry.curvePool(context.market);
-        _approveExact(context.params.collateralToken, curve, context.withdrawCollateralAssets);
+        _approveExact(context.params.collateralToken, curve, context.withdrawCollateralAssets, context.primaryType);
         uint256 minDy = context.flashAmount + fee;
         uint256 diemReceived = ICurvePoolMinimal(curve).exchange(1, 0, context.withdrawCollateralAssets, minDy);
         if (diemReceived < minDy) revert LoopV1Errors.CurveSlippageExceeded();

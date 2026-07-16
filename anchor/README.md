@@ -1,6 +1,6 @@
 # @wstdiem/anchor
 
-wstDIEM v0.1.0-rc1 anchor submitter. Periodically reads the indexer's view of registry + indexed-block state, computes a canonical manifest hash, and submits it to `LoopAnchorRegistry.submitStateSnapshot()` respecting the on-chain cadence cap.
+wstDIEM v0.1.0-rc1 anchor submitter. Periodically reads the indexer's view of registry + indexed-block state, computes a canonical manifest hash, and submits it to `LoopAnchorRegistry.submitStateSnapshotWithBlockHash()` (always with the RPC block hash — audit B fail-closed) respecting the on-chain cadence cap.
 
 **Status:** MVP release. The manifest schema is the minimum-viable starting commitment; the full the protocol spec §5.2 indexer-integrity manifest expands in a subsequent release.
 
@@ -28,7 +28,7 @@ npm run dev -- run     # or: node dist/cli.js run
 | `WSTDIEM_ANCHOR_CADENCE_OVERRIDE` | no | — | Override the on-chain cadence (use only for testing / forks) |
 | `WSTDIEM_MIN_INDEXER_LAG` | no | `1` | Skip submission if `currentBlock - indexedBlock` < this |
 | `WSTDIEM_ANCHOR_POLL_INTERVAL_MS` | no | `15000` | Poll cadence |
-| `WSTDIEM_ANCHOR_TX_CONFIRMATIONS` | no | `2` | Wait N confirmations before treating submission as complete |
+| `WSTDIEM_ANCHOR_TX_CONFIRMATIONS` | no | `10` | Wait N confirmations (min 2) before treating submission as complete |
 | `WSTDIEM_ANCHOR_LOG_LEVEL` | no | `info` | Same levels as the indexer |
 
 ## How it works
@@ -45,9 +45,11 @@ npm run dev -- run     # or: node dist/cli.js run
 |            |
 |            |        decideSubmit({ currentBlock, lastSubmitted, cadence, ... })
 |            |
+|            |        eth_getBlockByNumber(indexedBlock) -> blockHash
 |            |        eth_sendRawTransaction:
-|            |          LoopAnchorRegistry.submitStateSnapshot(
+|            |          LoopAnchorRegistry.submitStateSnapshotWithBlockHash(
 |            |            blockNumber: indexedBlock,
+|            |            blockHash: rpc block hash,
 |            |            manifestHash: keccak256(abi.encode(
 |            |              chainId, indexedBlock, indexedBlockHash,
 |            |              registryVersion, registryMerkleRoot
@@ -56,6 +58,11 @@ npm run dev -- run     # or: node dist/cli.js run
 |            | ---------------------------------------------------------> Base RPC
 +------------+
 ```
+
+The production path always binds the candidate block's hash so the on-chain
+registry can reject reorged heads within the 256-block `blockhash()` window.
+`submitStateSnapshot` (no hash) remains for forge unit tests only.
+
 
 ## Manifest hash schema (MVP release)
 

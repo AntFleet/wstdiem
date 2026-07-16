@@ -307,10 +307,49 @@ export class RpcQuorum {
       // Pass-through fields needed by viem internals (chain, transport).
       chain: (first as unknown as { chain?: unknown }).chain,
       transport: (first as unknown as { transport?: unknown }).transport,
+      // D-8: raw eth_call / eth_getBalance style requests are not quorumed —
+      // fail closed unless caller registered an explicit onUnquorumed handler
+      // (tests) or used a method that has a dedicated quorum path above.
       request: (...rest: unknown[]) => {
-        if (onUnquorumed) onUnquorumed("request");
-        return (first as unknown as { request: (...a: unknown[]) => unknown }).request(...rest);
+        if (onUnquorumed) {
+          onUnquorumed("request");
+          return (first as unknown as { request: (...a: unknown[]) => unknown }).request(
+            ...rest,
+          );
+        }
+        throw new Error(
+          "RpcQuorum: unquorumed PublicClient.request() blocked (D-8). " +
+            "Use readContract/getBlockNumber/getBlock/getLogs/simulateContract, " +
+            "or pass asPublicClient({ onUnquorumed }) only in tests.",
+        );
       },
+      // Additional commonly used read methods — quorum them too.
+      getBalance: (args: unknown) =>
+        enforce("getBalance", (c) =>
+          (c as unknown as { getBalance: (a: unknown) => Promise<unknown> }).getBalance(args),
+        ),
+      getTransactionCount: (args: unknown) =>
+        enforce("getTransactionCount", (c) =>
+          (
+            c as unknown as {
+              getTransactionCount: (a: unknown) => Promise<unknown>;
+            }
+          ).getTransactionCount(args),
+        ),
+      call: (args: unknown) =>
+        enforce("call", (c) =>
+          (c as unknown as { call: (a: unknown) => Promise<unknown> }).call(args),
+        ),
+      getCode: (args: unknown) =>
+        enforce("getCode", (c) =>
+          (c as unknown as { getCode: (a: unknown) => Promise<unknown> }).getCode(args),
+        ),
+      getStorageAt: (args: unknown) =>
+        enforce("getStorageAt", (c) =>
+          (c as unknown as { getStorageAt: (a: unknown) => Promise<unknown> }).getStorageAt(
+            args,
+          ),
+        ),
     };
     return proxy as unknown as PublicClient;
   }

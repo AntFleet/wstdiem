@@ -42,7 +42,7 @@ test.describe("Loop simulation (§13.4 row 3)", () => {
     await expect(page.getByTestId(LOOP.mevModeSelector)).toBeVisible();
   });
 
-  test.fixme(
+  test.skip(
     "post-action HF estimate resolves with SDK live data",
     async () => {
       // FIXME deferred: real HF estimation needs sdk.quoteOpen/quoteRebalance
@@ -52,7 +52,7 @@ test.describe("Loop simulation (§13.4 row 3)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "simulation feedback (estimated outputs, fees, route) renders",
     async () => {
       // FIXME deferred: per-route fee decomposition + expected output is a

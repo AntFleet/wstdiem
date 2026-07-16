@@ -77,6 +77,12 @@ export interface WstdiemSdkConfig {
    * indexer-trust audit residual). The key is typically read from
    * `registry.indexerSigningKey()` at app start. */
   indexerSigningKey?: Address;
+  /**
+   * When true, construction fails unless `indexerSigningKey` + `indexerVerifier`
+   * are both set (2026-06-17: reject unsigned indexer path for production apps).
+   * Default false for unit tests / local mocks.
+   */
+  requireIndexerSignatures?: boolean;
   /** Caller-supplied signature verifier so the SDK doesn't pin a specific
    * crypto scheme. Used together with `indexerSigningKey`. The default
    * recommendation is viem's `recoverMessageAddress`:
@@ -95,6 +101,11 @@ export interface WstdiemSdkConfig {
    * the on-chain validator will reject for missing evidence. PR-14 audit
    * M-4 closure. */
   evidenceResolver?: import("./evidence-resolver.js").EvidenceResolver;
+  /**
+   * D-4: when true, use placeholder evidence values (unit tests without venue
+   * RPC depth). Default false — production uses createLiveEvidenceResolver.
+   */
+  preferPlaceholderEvidence?: boolean;
 }
 
 export interface WstdiemContractAddresses {

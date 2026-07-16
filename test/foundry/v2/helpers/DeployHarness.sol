@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Vm} from "forge-std/Vm.sol";
+
 import {EmergencyGuardian} from "../../../../contracts/v2/EmergencyGuardian.sol";
 import {LoopAnchorRegistry} from "../../../../contracts/v2/LoopAnchorRegistry.sol";
 import {LoopAuthorization} from "../../../../contracts/v2/LoopAuthorization.sol";
@@ -15,6 +17,7 @@ import {LoopV1Types} from "../../../../contracts/v2/libraries/LoopV1Types.sol";
 import {DeploymentManifest} from "../../../../script/v2/DeploymentManifest.sol";
 
 abstract contract DeployHarness {
+    Vm private constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
     function _deploy(DeploymentManifest.DeploymentConfig memory config)
         internal
         returns (
@@ -62,7 +65,11 @@ abstract contract DeployHarness {
         registry.setAnchorSubmitter(config.anchorSubmitter);
         registry.setEmergencyGuardian(address(guardian));
         registry.setGovernanceRole(config.governanceMultisig);
+        registry.setSpendAllowlistEnforced(true);
+        // F22: Ownable2Step — two-phase ownership transfer.
         registry.transferOwnership(config.governanceMultisig);
+        vm.prank(config.governanceMultisig);
+        registry.acceptOwnership();
 
         require(registry.executorFor(uint8(LoopV1Types.PrimaryType.OPEN)) == deployed.executorV2, "open");
         require(registry.executorFor(uint8(LoopV1Types.PrimaryType.REBALANCE)) == deployed.executorV2, "rebalance");

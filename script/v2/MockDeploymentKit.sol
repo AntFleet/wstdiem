@@ -114,6 +114,12 @@ abstract contract MockDeploymentKit is CommonBase {
 
         // Executor is the KEEPER_PERMISSIONLESS execution caller for open/exit.
         registry.setPermissionlessCallerAllowed(deployed.executorV2, true);
+        // High-tier: hard spender allowlist for production-shaped deploys/tests.
+        registry.setSpendAllowlistEnforced(true);
+        // Post-bootstrap: freeze immediate batchUpdate; further config needs queue+timelock.
+        registry.closeBootstrap();
+        // 2026-06-17 deploy fail-closed: refuse incomplete bootstrap wiring.
+        registry.assertProductionReadiness(mocks.marketId);
     }
 
     function _deployMockVenues() internal returns (MockAddresses memory mocks) {

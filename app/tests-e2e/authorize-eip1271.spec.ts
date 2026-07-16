@@ -10,7 +10,7 @@
 import { test } from "@playwright/test";
 
 test.describe("Authorize via EIP-1271 + I-66 (§13.4 row 6)", () => {
-  test.fixme(
+  test.skip(
     "Safe co-signing produces a valid EIP-1271 signature",
     async () => {
       // FIXME deferred: needs Safe deployment + co-signer set + Safe SDK
@@ -18,7 +18,7 @@ test.describe("Authorize via EIP-1271 + I-66 (§13.4 row 6)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "Coinbase Smart Wallet signs typed-data with smart-wallet semantics",
     async () => {
       // FIXME deferred: needs CSW account + smart-wallet-aware ConnectKit
@@ -27,7 +27,7 @@ test.describe("Authorize via EIP-1271 + I-66 (§13.4 row 6)", () => {
     },
   );
 
-  test.fixme(
+  test.skip(
     "I-66 preimage attestation pins the digest correctly",
     async () => {
       // FIXME deferred: I-66 attestation flow lands when the SDK gap

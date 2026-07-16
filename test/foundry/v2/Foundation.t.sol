@@ -64,6 +64,9 @@ contract FoundationEventProbe is ILoopV1Events {
         emit FeePayoutFailed(bytes32(uint256(1)), address(0x1001), address(0x1002), 3);
         emit LargeDustRefund(bytes32(uint256(1)), address(0x1001), address(0x1002), 3, 4);
         emit OperatorRecoveryNotice(address(0x1001), bytes32(uint256(2)), 3, bytes32(uint256(4)));
+        emit RegistryConfigBatchQueued(1, bytes32(uint256(2)), address(0x1001), 3, 4);
+        emit RegistryConfigBatchCancelled(1, bytes32(uint256(2)), address(0x1001));
+        emit BootstrapClosed(1);
     }
 }
 
@@ -459,6 +462,102 @@ contract FoundationTest is TestHelpers, Test {
         vm.expectRevert(LoopV1Errors.ConfigMutationOutsideAtomicGate.selector);
         registry.setRegistryMerkleRoot(bytes32(uint256(1)));
         registry.setRegistryMerkleRoot(bytes32(uint256(2)));
+        vm.stopPrank();
+    }
+
+    function testBatchUpdateImmediateDuringBootstrap() public {
+        LoopRegistry registry = deployRegistry();
+        assertFalse(registry.bootstrapClosed());
+
+        vm.startPrank(OWNER);
+        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](1);
+        ops[0] = _opExecutor(uint8(LoopV1Types.PrimaryType.OPEN), address(0x1005));
+        registry.batchUpdate(ops, 1, bytes32(uint256(1)));
+        assertEq(registry.registryVersion(), 1);
+        assertEq(registry.executorFor(uint8(LoopV1Types.PrimaryType.OPEN)), address(0x1005));
+        (,,, uint256 effectiveBlock,) = registry.pendingBatchUpdate();
+        assertEq(effectiveBlock, 0, "no pending during bootstrap");
+        vm.stopPrank();
+    }
+
+    function testBatchUpdateQueuesAfterBootstrapClosed() public {
+        LoopRegistry registry = deployRegistry();
+
+        vm.startPrank(OWNER);
+        registry.closeBootstrap();
+        assertTrue(registry.bootstrapClosed());
+
+        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](1);
+        ops[0] = _opExecutor(uint8(LoopV1Types.PrimaryType.OPEN), address(0xABCD));
+        uint256 start = block.number;
+        registry.batchUpdate(ops, 1, bytes32(uint256(11)));
+
+        // Not applied yet.
+        assertEq(registry.registryVersion(), 0);
+        assertEq(registry.executorFor(uint8(LoopV1Types.PrimaryType.OPEN)), address(0));
+
+        (bytes32 opsHash, uint256 nextVersion, bytes32 nextRoot, uint256 effectiveBlock, uint16 opCount) =
+            registry.pendingBatchUpdate();
+        assertEq(nextVersion, 1);
+        assertEq(nextRoot, bytes32(uint256(11)));
+        assertEq(opCount, 1);
+        assertEq(effectiveBlock, start + 130_000);
+        assertEq(opsHash, keccak256(abi.encode(ops)));
+
+        // Timelock not elapsed.
+        vm.expectRevert(LoopV1Errors.FingerprintTimelockNotElapsed.selector);
+        registry.applyBatchUpdate(ops);
+
+        vm.roll(effectiveBlock);
+        registry.applyBatchUpdate(ops);
+        assertEq(registry.registryVersion(), 1);
+        assertEq(registry.executorFor(uint8(LoopV1Types.PrimaryType.OPEN)), address(0xABCD));
+        (,,, uint256 cleared,) = registry.pendingBatchUpdate();
+        assertEq(cleared, 0);
+        vm.stopPrank();
+    }
+
+    function testApplyBatchUpdateRejectsOpsMismatch() public {
+        LoopRegistry registry = deployRegistry();
+        vm.startPrank(OWNER);
+        registry.closeBootstrap();
+
+        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](1);
+        ops[0] = _opExecutor(uint8(LoopV1Types.PrimaryType.OPEN), address(0x1111));
+        registry.batchUpdate(ops, 1, bytes32(uint256(1)));
+        vm.roll(block.number + 130_000);
+
+        ILoopRegistry.BatchOp[] memory wrong = new ILoopRegistry.BatchOp[](1);
+        wrong[0] = _opExecutor(uint8(LoopV1Types.PrimaryType.OPEN), address(0x2222));
+        vm.expectRevert(LoopRegistry.PendingBatchMismatch.selector);
+        registry.applyBatchUpdate(wrong);
+        vm.stopPrank();
+    }
+
+    function testCancelPendingBatch() public {
+        LoopRegistry registry = deployRegistry();
+        vm.startPrank(OWNER);
+        registry.closeBootstrap();
+
+        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](1);
+        ops[0] = _opExecutor(uint8(LoopV1Types.PrimaryType.OPEN), address(0x3333));
+        registry.batchUpdate(ops, 1, bytes32(uint256(1)));
+        registry.cancelPendingBatch();
+        (,,, uint256 effectiveBlock,) = registry.pendingBatchUpdate();
+        assertEq(effectiveBlock, 0);
+
+        vm.roll(block.number + 130_000);
+        vm.expectRevert(LoopRegistry.NoPendingBatch.selector);
+        registry.applyBatchUpdate(ops);
+        vm.stopPrank();
+    }
+
+    function testCloseBootstrapIsOneWay() public {
+        LoopRegistry registry = deployRegistry();
+        vm.startPrank(OWNER);
+        registry.closeBootstrap();
+        vm.expectRevert(LoopRegistry.BootstrapAlreadyClosed.selector);
+        registry.closeBootstrap();
         vm.stopPrank();
     }
 

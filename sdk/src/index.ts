@@ -19,5 +19,6 @@ export * from "./preimage/index.js";
 export * from "./gates/index.js";
 export * from "./anchor/index.js";
 export * from "./external/index.js";
+export * from "./force-exit/index.js";
 export type { WstdiemSdk } from "./sdk.js";
 export * from "./live/index.js";
