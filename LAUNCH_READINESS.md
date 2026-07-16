@@ -111,6 +111,21 @@ This applies all six fingerprints, hands registry ownership to governance, and a
 open/exit gates pass. After it lands, point app `VITE_CONTRACT_*` + service `.env` at the
 `_deployment` addresses and the market is live.
 
+### ✅ Env wiring + test tokens (2026-07-13) — activation items 2 & 4
+
+Local runnable configs created (gitignored) pointing at the live phase-1 deployment:
+- `app/.env.local` — chain 84532, live `VITE_CONTRACT_*`, market id, 2 Sepolia RPCs + single-client fallback, local indexer URL, unsigned reads.
+- `indexer/.env` — live addresses, `startBlock=44054200` (deploy spanned 44054231–44054367), Sepolia RPC.
+- `anchor/.env` — live registry/anchor addresses (needs a real submitter registered post-phase-2 to actually submit; not required for the open flow).
+
+Test tokens minted (MockERC20.mint is unrestricted → any wallet can self-mint):
+- Test wallet `0xb41891318Be43D2A966f574BaFC52D0a501Db96A` (the deployer EOA; has gas) holds **1,000,000 DIEM + 1,000,000 wstDIEM**.
+- DIEM `0xb4e1c260cae1a9e627155273cea9bba3521db783` · wstDIEM `0x20188de4401750dfaa370a8be69de08722d16990`.
+
+Remaining to open a loop on testnet: (a) phase-2 apply lands (scheduled 07-16); (b) run the
+indexer (`npm run -w indexer dev` with `indexer/.env`); (c) run the app (`npm run -w app dev`)
+and drive one open→exit; (d) un-fixme the action-path Playwright specs against the live deploy.
+
 ### 🔒 Original hand-off (superseded by the above for the mock deploy)
 
 1. Provide a funded Base Sepolia deployer key + RPC (`WSTDIEM_MOCK_DEPLOYER`,
