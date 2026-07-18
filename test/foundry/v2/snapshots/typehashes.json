@@ -24,6 +24,11 @@
     "preimage": "DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)",
     "hash": "0x0b5f1f9ee52c2d672eb66a2dd7432dcaf9ba09cd536a70c8001e8a9cb7b6f119"
   },
+  "MORPHO_MARKET_PARAMS_TYPEHASH": {
+    "name": "MORPHO_MARKET_PARAMS_TYPEHASH",
+    "preimage": "MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)",
+    "hash": "0x9902c64bfcbd310d935c0858d91b39aa78a4dcc3eff17f4d8631b8517b6a0546"
+  },
   "EVIDENCE_SOURCE_TYPEHASH": {
     "name": "EVIDENCE_SOURCE_TYPEHASH",
     "preimage": "EvidenceSource(bytes32 sourceId,address sourceAddress,uint8 status,uint256 lastUpdateBlock,bytes32 valueHash)",
@@ -91,33 +96,33 @@
   },
   "OPEN_TYPEHASH": {
     "name": "OPEN_TYPEHASH",
-    "preimage": "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)",
-    "hash": "0x2bf326ec023d5505d6e268c1f605a44c399dadaeab0076ba7bd48261d09d3cfc"
+    "preimage": "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
+    "hash": "0x843aa42882f702f45a618dbc1cca689093a1f354b5a514aea561343c7b06e884"
   },
   "REBALANCE_TYPEHASH": {
     "name": "REBALANCE_TYPEHASH",
-    "preimage": "Rebalance(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,RebalanceBounds bounds,DigestHashes hashes)",
-    "hash": "0xf256414d319bebda5c008b5d2f67aa2e09fa6c688278eecd676dfccece1c7709"
+    "preimage": "Rebalance(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,RebalanceBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)RebalanceBounds(uint16 targetLeverageBps,uint16 targetLeverageToleranceBps,uint256 minPostHealthFactor,uint16 minLiquidationDistanceBps,uint256 maxDebtIncrease,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
+    "hash": "0x71e9d21879e5766f0db9cd274146777299cf154947314e92cc1ff899095cfe5c"
   },
   "EXIT_TYPEHASH": {
     "name": "EXIT_TYPEHASH",
-    "preimage": "Exit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ExitBounds bounds,DigestHashes hashes)",
-    "hash": "0xccac07a147f55c08855564121c8ccdc3b1352f8347f63bc95cf4ba0de2dab231"
+    "preimage": "Exit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ExitBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)ExitBounds(uint256 minRepayment,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash,bool repayOnly,bool acceptsThirdPartyRepay)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)",
+    "hash": "0x01f969dbea5450b7d9fd93a59bbc2a1077b31223f57223c37136786ebf362816"
   },
   "FORCE_EXIT_TYPEHASH": {
     "name": "FORCE_EXIT_TYPEHASH",
-    "preimage": "ForceExit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ForceExitBounds bounds,DigestHashes hashes)",
-    "hash": "0x04ba9640cab2caceb652e1928cd497f46de1a59d89a11c39185825b1f8b34de1"
+    "preimage": "ForceExit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ForceExitBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)ForceExitBounds(uint256 minRepayment,uint256 maxCollateralSold,uint16 looseSlippageBps,uint256 looseFlashFeeCap,uint16 maxCurvePositionShareBps,uint8 acknowledgedRisks)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)",
+    "hash": "0xc0633b3ec1244cd5f19708c52d4e703e6a394642149555e9ecd47b42ee555dba"
   },
   "REVOKE_TYPEHASH": {
     "name": "REVOKE_TYPEHASH",
-    "preimage": "Revoke(ActionIdentity identity,Freshness freshness,uint8 executionKind,RevokeBounds bounds,DigestHashes hashes)",
-    "hash": "0x272281406c23225b34295b159d27a50245e0ada5850e679be7ea030def11f28c"
+    "preimage": "Revoke(ActionIdentity identity,Freshness freshness,uint8 executionKind,RevokeBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)RevokeBounds(uint64 policyId,uint8 policyClass,uint256 effectiveBlock)",
+    "hash": "0x5bc2c09caa66e548017a47579226e2cad5eeaeaa87754155861c5ee95d6fc1c7"
   },
   "AUTOMATION_EXEC_TYPEHASH": {
     "name": "AUTOMATION_EXEC_TYPEHASH",
-    "preimage": "AutomationExec(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,AutomationBounds bounds,DigestHashes hashes)",
-    "hash": "0xc3cc6b85e7d0810b5df24ab654f52071104c552393b0e8fddd73713fa8248033"
+    "preimage": "AutomationExec(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,AutomationBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)AutomationBounds(bytes32 triggerConditionHash,uint8 underlyingPrimaryType,bytes32 underlyingActionHash,bytes32 policyHash,bytes32 boundSubsetHash,uint256 notBeforeBlock,uint256 notAfterBlock)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)",
+    "hash": "0x12c176744ffccfe3d475b78289fbce079da25a5c3fd1cf01dd88b50e3c756aa9"
   },
   "PREIMAGE_PROOF_TYPEHASH": {
     "name": "PREIMAGE_PROOF_TYPEHASH",

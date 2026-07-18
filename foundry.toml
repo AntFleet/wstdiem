@@ -10,5 +10,6 @@ via_ir = true
 fs_permissions = [
   { access = "read", path = "./test/foundry/v2/snapshots/" },
   { access = "read", path = "./test/foundry/v2/fork/" },
-  { access = "write", path = "./test/foundry/v2/fork/" }
+  { access = "write", path = "./test/foundry/v2/fork/" },
+  { access = "read", path = "./sdk/test/fixtures/" }
 ]

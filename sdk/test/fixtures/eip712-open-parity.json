@@ -1,0 +1,64 @@
+{
+  "domain": {
+    "name": "WSTDIEM Loop",
+    "version": "1",
+    "chainId": 84532,
+    "verifyingContract": "0x00000000000000000000000000000000000000A1",
+    "salt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "message": {
+    "identity": {
+      "owner": "0x0000000000000000000000000000000000000020",
+      "chainId": "84532",
+      "verifyingContract": "0x00000000000000000000000000000000000000A1",
+      "market": "0xabababababababababababababababababababababababababababababababab",
+      "executor": "0x0000000000000000000000000000000000000002",
+      "registryVersion": "1",
+      "registryMerkleRoot": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "policyId": "0",
+      "nonceSlot": "0",
+      "nonceBit": "0"
+    },
+    "freshness": {
+      "deadline": "1900000000",
+      "quoteBlockNumber": "123",
+      "maxQuoteAgeBlocks": "5",
+      "maxQuoteDeviationBps": "50"
+    },
+    "executionKind": "0",
+    "mevProtectionMode": "1",
+    "mevWaiverBits": "0",
+    "marketParams": {
+      "loanToken": "0x0000000000000000000000000000000000000010",
+      "collateralToken": "0x0000000000000000000000000000000000000011",
+      "oracle": "0x0000000000000000000000000000000000000012",
+      "irm": "0x0000000000000000000000000000000000000013",
+      "lltv": "800000000000000000"
+    },
+    "feeCaps": {
+      "flashFeeCap": "100",
+      "protocolFeeCap": "50",
+      "automationFeeCap": "25"
+    },
+    "bounds": {
+      "minWstDiemReceived": "1000",
+      "minBorrowedDiem": "100",
+      "maxBorrowedDiem": "10000",
+      "maxSlippageBps": "25",
+      "maxPriceImpactBps": "25",
+      "maxLeverageBps": "8500",
+      "minHealthFactor": "1100000000000000000",
+      "minLiquidationDistanceBps": "500",
+      "maxMorphoUtilizationImpactBps": "500",
+      "feeCapsHash": "0x99da0e2ed14550317b789db8f4bf2bed85c0f14c6c32bfb398e02b16b18d2f58"
+    },
+    "hashes": {
+      "quoteHash": "0x0101010101010101010101010101010101010101010101010101010101010101",
+      "spenderListHash": "0x0202020202020202020202020202020202020202020202020202020202020202",
+      "allowanceScheduleHash": "0x0303030303030303030303030303030303030303030303030303030303030303",
+      "feeCapHash": "0x0404040404040404040404040404040404040404040404040404040404040404",
+      "evidenceBundleHash": "0x0505050505050505050505050505050505050505050505050505050505050505"
+    }
+  },
+  "expectedDigest": "0x84fafb0a0260c849a68cc2939a979a565058372e0994e48127e5b377574a2966"
+}
