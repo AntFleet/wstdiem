@@ -3,13 +3,25 @@
  * protocol on Base Sepolia (chainId 84532), driven through the real SDK
  * build -> sign -> attach -> broadcast path (sdk/dist).
  *
+ * OPERATIONAL SCRIPT — NOT part of `tsc`. It imports the prebuilt SDK dist
+ * (../sdk/dist/index.js) at runtime via tsx and is intentionally excluded from
+ * the SDK/app tsconfig. Run it with tsx, not the type-checker.
+ *
  * Usage:
+ *   npm run e2e:sepolia
+ *   # or directly:
  *   node_modules/.bin/tsx scripts/sepolia-open-exit-smoke.ts
  *
  * Env flags:
  *   OPEN_BROADCAST=1   broadcast the OPEN tx (else simulate only)
  *   EXIT_BROADCAST=1   broadcast the EXIT tx (else simulate only)
  *   EQUITY_WEI=...     wstDIEM equity to pre-supply as Morpho collateral (default 2e18)
+ *
+ * Env overrides (all fall back to the documented Base Sepolia defaults below):
+ *   SEPOLIA_RPC_URL          JSON-RPC endpoint
+ *   OWNER_ADDRESS            action owner (must match the deployer key)
+ *   MARKET_ID                bytes32 market id
+ *   LOOP_AUTHORIZATION, LOOP_EXECUTOR_V2, LOOP_REGISTRY, ...  core contract addrs
  *
  * Key handling: never printed. Loaded from ~/.wstdiem-sepolia-deployer.json.
  */
@@ -30,23 +42,32 @@ import { baseSepolia } from "viem/chains";
 // @ts-ignore - use the prebuilt SDK dist (source tree currently has unrelated TS errors)
 import { createSdk, CANONICAL_ERRORS } from "../sdk/dist/index.js";
 
-const RPC = "https://base-sepolia.drpc.org";
-const OWNER = "0xb41891318Be43D2A966f574BaFC52D0a501Db96A" as Address;
+// All operational parameters are env-overridable; the defaults are the
+// documented Base Sepolia deployment so the script runs with no env set.
+const env = (key: string, fallback: string): string => process.env[key] ?? fallback;
+
+const RPC = env("SEPOLIA_RPC_URL", "https://base-sepolia.drpc.org");
+const OWNER = env(
+  "OWNER_ADDRESS",
+  "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
+) as Address;
 
 const CONTRACTS = {
-  loopRegistry: "0xdfdaf03861400273a0a661ed6f9a1163864f2860",
-  loopAuthorization: "0xbaa4fbd327108aeaca64917737e3cecd18ab6099",
-  loopForceExitAuthorizer: "0xc0293cb07864f0db0ecda5e198da475adb860715",
-  loopExecutorV2: "0xbcc854a8b4dbdf5acb08818cd19d5c0904914e38",
-  loopForceExitExecutor: "0x5d2a23630002e544ce9595e021fd978fe25ea553",
-  loopAnchorRegistry: "0xd7dedbfe7ba8f9af04b4143e5cc1be12aebca79a",
-  loopRiskOracleAdapter: "0x80db4a9f9f4f8676c03d16782311909027c92b81",
-  loopFeeRouter: "0xc21b5176cacc77a6c58c0714523b0f62d5d5b3fb",
-  emergencyGuardian: "0xe296e2d59a0f612e2e8f1427d3fb58a60ecd65f6",
+  loopRegistry: env("LOOP_REGISTRY", "0xdfdaf03861400273a0a661ed6f9a1163864f2860"),
+  loopAuthorization: env("LOOP_AUTHORIZATION", "0xbaa4fbd327108aeaca64917737e3cecd18ab6099"),
+  loopForceExitAuthorizer: env("LOOP_FORCE_EXIT_AUTHORIZER", "0xc0293cb07864f0db0ecda5e198da475adb860715"),
+  loopExecutorV2: env("LOOP_EXECUTOR_V2", "0xbcc854a8b4dbdf5acb08818cd19d5c0904914e38"),
+  loopForceExitExecutor: env("LOOP_FORCE_EXIT_EXECUTOR", "0x5d2a23630002e544ce9595e021fd978fe25ea553"),
+  loopAnchorRegistry: env("LOOP_ANCHOR_REGISTRY", "0xd7dedbfe7ba8f9af04b4143e5cc1be12aebca79a"),
+  loopRiskOracleAdapter: env("LOOP_RISK_ORACLE_ADAPTER", "0x80db4a9f9f4f8676c03d16782311909027c92b81"),
+  loopFeeRouter: env("LOOP_FEE_ROUTER", "0xc21b5176cacc77a6c58c0714523b0f62d5d5b3fb"),
+  emergencyGuardian: env("EMERGENCY_GUARDIAN", "0xe296e2d59a0f612e2e8f1427d3fb58a60ecd65f6"),
 } as Record<string, Address>;
 
-const MARKET_ID =
-  "0x993a63168f646baefcfec1acc9f44138ce787143a31655f5a1a97957924261d2" as Hex;
+const MARKET_ID = env(
+  "MARKET_ID",
+  "0x993a63168f646baefcfec1acc9f44138ce787143a31655f5a1a97957924261d2",
+) as Hex;
 const DIEM = "0xb4e1c260cae1a9e627155273cea9bba3521db783" as Address;
 const WST = "0x20188de4401750dfaa370a8be69de08722d16990" as Address;
 const MORPHO = "0x89196da4dca5029adff7513dddd103867216eee3" as Address;

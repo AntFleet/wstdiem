@@ -1,6 +1,20 @@
 import { describe, it, expect } from "vitest";
+import { ContractFunctionExecutionError } from "viem";
 import { RegistryReader, AuthorizationReader, MorphoReader, ChainlinkReader, SequencerFeedReader, VaultReader } from "../src/live/readers/index.js";
 import { FakePublicClient } from "./live-helpers.js";
+
+/** A viem ContractFunctionExecutionError instance, as thrown when an on-chain
+ * call reverts or the function is absent — the only error class the VaultReader
+ * fallback is allowed to swallow. Built via the prototype to skip viem's heavy
+ * constructor-time formatting (which needs a fully-formed revert cause). */
+function contractRevert(): ContractFunctionExecutionError {
+  const err = Object.create(
+    ContractFunctionExecutionError.prototype,
+  ) as ContractFunctionExecutionError;
+  (err as { message: string }).message = "execution reverted: function absent";
+  (err as { name: string }).name = "ContractFunctionExecutionError";
+  return err;
+}
 
 const LOOP_REGISTRY = "0x0000000000000000000000000000000000000101" as const;
 const LOOP_AUTH = "0x0000000000000000000000000000000000000102" as const;
@@ -214,31 +228,89 @@ describe("VaultReader", () => {
     expect(fake.calls.some((c) => c.functionName === "convertToAssets")).toBe(false);
   });
 
-  it("convertToShares falls back to NAV inversion when convertToShares reverts", async () => {
+  it("convertToShares falls back to the canonical ERC-4626 floor when convertToShares reverts", async () => {
     const fake = new FakePublicClient({
       handlers: {
         convertToShares: () => {
-          throw new Error("execution reverted: convertToShares not implemented");
+          throw contractRevert();
         },
-        // price-per-share = 1.05 → convertToAssets(1e18) = 1.05e18.
-        convertToAssets: (args) => (BigInt(args[0] as bigint) * 105n) / 100n,
+        // price-per-share = 1.05 → totalSupply/totalAssets = 1/1.05.
+        totalSupply: () => 1_000_000n,
+        totalAssets: () => 1_050_000n,
       },
     });
     const vault = new VaultReader(fake.asPublicClient(), VAULT);
-    // shares = assets * 1e18 / convertToAssets(1e18) = 1_050_000 / 1.05 = 1_000_000.
+    // shares = assets * totalSupply / totalAssets = 1_050_000 * 1e6 / 1.05e6 = 1_000_000.
     expect(await vault.convertToShares(1_050_000n)).toBe(1_000_000n);
   });
 
-  it("convertToShares fallback throws a clear error on div-by-zero NAV", async () => {
+  it("canonical fallback floors a non-exact ratio and never overestimates", async () => {
+    // totalSupply=3, totalAssets=4, assets=100 → 100*3/4 = 75 exactly floored.
     const fake = new FakePublicClient({
       handlers: {
         convertToShares: () => {
-          throw new Error("execution reverted");
+          throw contractRevert();
         },
-        convertToAssets: () => 0n,
+        totalSupply: () => 3n,
+        totalAssets: () => 4n,
       },
     });
     const vault = new VaultReader(fake.asPublicClient(), VAULT);
-    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/div-by-zero/);
+    const shares = await vault.convertToShares(100n);
+    expect(shares).toBe(75n);
+    // Must NOT overestimate: floor(assets*ts/ta) <= assets*ts/ta.
+    expect(shares * 4n).toBeLessThanOrEqual(100n * 3n);
+    // Non-exactly-representable check: a value that rounds up would be 76.
+    expect(shares).not.toBe(76n);
+  });
+
+  it("canonical fallback mints 1:1 for an empty vault (totalSupply == 0)", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw contractRevert();
+        },
+        totalSupply: () => 0n,
+        totalAssets: () => 0n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    expect(await vault.convertToShares(1_234n)).toBe(1_234n);
+  });
+
+  it("canonical fallback throws a clear error when totalSupply != 0 and totalAssets == 0", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw contractRevert();
+        },
+        totalSupply: () => 1_000n,
+        totalAssets: () => 0n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/cannot price/);
+  });
+
+  it("convertToShares rethrows a transport/unexpected error instead of falling back", async () => {
+    // A non-revert error (e.g. RPC timeout / network) must NOT be masked as a
+    // vault lacking convertToShares — it must propagate so a degraded RPC never
+    // produces a share floor from a bad read.
+    const transportErr = new Error("HTTP request failed: 503 Service Unavailable");
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw transportErr;
+        },
+        // If the fallback were (wrongly) taken these would be read.
+        totalSupply: () => 1_000n,
+        totalAssets: () => 1_000n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
+    // Prove the fallback was never entered: no raw NAV reads happened.
+    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
+    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
   });
 });

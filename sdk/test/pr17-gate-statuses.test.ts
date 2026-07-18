@@ -522,6 +522,67 @@ describe("PR-17 audit MAJ-2: G-PM-5 / G-PM-6 fail-state coverage", () => {
   });
 });
 
+// Audit C: G-PM-6 is scoped to real automation (primaryType === AutomationExec),
+// NOT to executionKind. Since the default executionKind is now
+// KEEPER_PERMISSIONLESS, a MANUAL Open must NOT be checked against the
+// permissionless caller allow-list (executeOpen has no on-chain allow-list), so
+// no spurious callerAllowed:false blocks normal users.
+describe("Audit C: G-PM-6 scoped to AutomationExec, not to executionKind", () => {
+  it("manual KEEPER_PERMISSIONLESS Open → G-PM-6 notApplicable (no spurious CallerNotAllowed)", async () => {
+    // permissionlessCallerAllowed => false in baseHandlers; if G-PM-6 were
+    // (wrongly) gated on executionKind this would surface a fail for a manual
+    // open. It must instead be notApplicable.
+    const { sdk } = buildSdk();
+    const manualKeeperOpen = {
+      ...openTemplate,
+      executionKind: "KEEPER_PERMISSIONLESS" as const,
+      eip1271PreimageDisplayProof: ("0x" + "ab".repeat(32)) as `0x${string}`,
+    };
+    const preview = await sdk.quoteOpen(manualKeeperOpen as never);
+    const g6 = preview.gateStatuses.find(
+      (g) => g.gate === "G_PM_6_AUTOMATION_THROTTLE",
+    );
+    expect(g6?.status).toBe("notApplicable");
+    expect(g6?.status).not.toBe("fail");
+  });
+
+  it("AutomationExec action → G-PM-6 IS applied (caller allow-list checked)", async () => {
+    // permissionlessCallerAllowed => false → the gate must actually evaluate and
+    // fail with CallerNotAllowed for a genuine automation action.
+    const { sdk } = buildSdk();
+    const automationExec = {
+      primaryType: "AutomationExec" as const,
+      owner: OWNER,
+      chainId: asChainId(8453),
+      verifyingContract: LOOP_AUTH,
+      executor: LOOP_EXEC_V2,
+      market: MARKET as never,
+      registryVersion: 1n as never,
+      registryMerkleRoot: ("0x" + "cd".repeat(32)) as never,
+      policyId: asPolicyId(0n),
+      nonceSlot: 0n,
+      nonceBit: 0,
+      executionKind: "KEEPER_PERMISSIONLESS" as const,
+      deadline: 1_700_000_000 as never,
+      quoteBlockNumber: 1_500_000n as never,
+      maxQuoteAgeBlocks: 10,
+      maxQuoteDeviationBps: 50 as never,
+      mevProtectionMode: "PRIVATE_BUILDER" as const,
+      mevWaiverBits: 0,
+      evidenceBundleHash: ("0x" + "ef".repeat(32)) as never,
+      underlyingPrimaryType: "Exit" as const,
+      triggerConditionHash: ("0x" + "12".repeat(32)) as `0x${string}`,
+      underlyingBoundsHash: ("0x" + "34".repeat(32)) as `0x${string}`,
+    };
+    const preview = await sdk.previewTransaction(automationExec as never);
+    const g6 = preview.gateStatuses.find(
+      (g) => g.gate === "G_PM_6_AUTOMATION_THROTTLE",
+    );
+    expect(g6?.status).toBe("fail");
+    expect(g6?.error).toBe("CallerNotAllowed");
+  });
+});
+
 // Suppress unused-import for asBlockNumber when we don't reference it
 // directly in this file (kept for future test extensions).
 void asBlockNumber;

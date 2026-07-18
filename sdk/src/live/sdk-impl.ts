@@ -1650,7 +1650,8 @@ export class LiveWstdiemSdk implements WstdiemSdk {
   // the read client (fresh block), and config (verifyingContract + executor)
   // into a fully-assembled action envelope. The critical digest fields —
   // registryVersion, registryMerkleRoot, nonceSlot/nonceBit, quoteBlockNumber,
-  // verifyingContract, executor, policyId (0), executionKind (OWNER_DIRECT) —
+  // verifyingContract, executor, policyId (0), executionKind (defaults to
+  // KEEPER_PERMISSIONLESS; callers may override via `input.executionKind`) —
   // are derived here so callers never hand-build them. `evidenceBundleHash`
   // is populated via the same `resolveEvidence` path `assembleAuthorization`
   // uses, so the envelope's field matches what the digest will commit at the
@@ -2974,8 +2975,16 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     // Frontend wires the observed channel via `evaluatePostMatrixGates`
     // directly when it has more knowledge.
 
-    // G-PM-6 automation throttle. Only applies to KEEPER_PERMISSIONLESS.
-    if (action.executionKind === "KEEPER_PERMISSIONLESS") {
+    // G-PM-6 automation throttle + permissionless caller allow-list. This is
+    // enforced on-chain ONLY in executeAutomationExec (LoopExecutorV2.sol:206);
+    // executeOpen/executeExit have NO caller allow-list. Gate on the action
+    // being a real automation action (primaryType === "AutomationExec"), NOT on
+    // executionKind — since the default executionKind is now
+    // KEEPER_PERMISSIONLESS, gating on executionKind would fire for MANUAL
+    // Open/Rebalance/Exit and check the owner against the allow-list, yielding a
+    // spurious callerAllowed:false. Omitting g6 for manual actions makes
+    // evaluatePostMatrixGates surface G-PM-6 as notApplicable.
+    if (action.primaryType === "AutomationExec") {
       try {
         const allowed = await this.registry
           .permissionlessCallerAllowed(action.owner)

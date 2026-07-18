@@ -15,7 +15,8 @@
     "test:contracts": "forge test --no-match-path 'test/foundry/*Fork.t.sol'",
     "test:contracts:fork": "node -e \"if (!process.env.BASE_RPC_URL) { console.error('BASE_RPC_URL is required'); process.exit(1); }\" && forge test --match-path 'test/foundry/*Fork.t.sol'",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "e2e:sepolia": "node_modules/.bin/tsx scripts/sepolia-open-exit-smoke.ts"
   },
   "engines": {
     "node": ">=20"

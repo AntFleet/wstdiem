@@ -216,6 +216,9 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
       mevWaiverBits: 0,
     });
     expect(action.primaryType).toBe("Rebalance");
+    // Default executionKind is KEEPER_PERMISSIONLESS (users act through the
+    // executor; OWNER_DIRECT reverts ExecutionKindMismatch).
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     expect(action.bounds.targetLeverageBps).toBe(25_000);
     expect(action.bounds.maxCollateralSold).toBe(1_000_000n);
     expect(action.verifyingContract).toBe(LOOP_AUTH);
@@ -235,6 +238,7 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
       mevWaiverBits: 0,
     });
     expect(action.primaryType).toBe("Exit");
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     expect(action.routeKind).toBe("REPAY_ONLY");
     expect(action.bounds.repayOnly).toBe(true);
     expect(action.bounds.maxCollateralSold).toBe(800_000n);
@@ -251,6 +255,7 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
       mevWaiverBits: 0,
     });
     expect(action.primaryType).toBe("ForceExit");
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     // ForceExit binds to the DISTINCT authorizer + executor.
     expect(action.verifyingContract).toBe(LOOP_FORCE_EXIT_AUTH);
     expect(action.executor).toBe(LOOP_FORCE_EXEC);
