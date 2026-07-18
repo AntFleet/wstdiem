@@ -198,4 +198,47 @@ describe("VaultReader", () => {
     expect(await vault.totalAssets()).toBe(1_050_000n);
     expect(await vault.convertToAssets(1_000n)).toBe(1_050n);
   });
+
+  it("convertToShares uses the on-chain primary path when the vault implements it", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        // Compliant vault: convertToShares answers directly.
+        convertToShares: () => 777n,
+        // Would derive a different value if the fallback were (wrongly) used.
+        convertToAssets: (args) => (BigInt(args[0] as bigint) * 105n) / 100n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    expect(await vault.convertToShares(1_000n)).toBe(777n);
+    // Primary path only — no NAV inversion read.
+    expect(fake.calls.some((c) => c.functionName === "convertToAssets")).toBe(false);
+  });
+
+  it("convertToShares falls back to NAV inversion when convertToShares reverts", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw new Error("execution reverted: convertToShares not implemented");
+        },
+        // price-per-share = 1.05 → convertToAssets(1e18) = 1.05e18.
+        convertToAssets: (args) => (BigInt(args[0] as bigint) * 105n) / 100n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    // shares = assets * 1e18 / convertToAssets(1e18) = 1_050_000 / 1.05 = 1_000_000.
+    expect(await vault.convertToShares(1_050_000n)).toBe(1_000_000n);
+  });
+
+  it("convertToShares fallback throws a clear error on div-by-zero NAV", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw new Error("execution reverted");
+        },
+        convertToAssets: () => 0n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/div-by-zero/);
+  });
 });

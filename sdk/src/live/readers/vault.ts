@@ -43,12 +43,30 @@ export class VaultReader {
     }) as Promise<bigint>;
   }
 
-  convertToShares(assets: bigint): Promise<bigint> {
-    return this.client.readContract({
-      address: this.address,
-      abi: ERC4626_ABI,
-      functionName: "convertToShares",
-      args: [assets],
-    }) as Promise<bigint>;
+  async convertToShares(assets: bigint): Promise<bigint> {
+    // Primary path: compliant ERC-4626 vaults expose convertToShares directly.
+    try {
+      return (await this.client.readContract({
+        address: this.address,
+        abi: ERC4626_ABI,
+        functionName: "convertToShares",
+        args: [assets],
+      })) as bigint;
+    } catch {
+      // Fallback: some deployed vaults (e.g. the Sepolia mock) implement only
+      // convertToAssets. Invert the price-per-share from convertToAssets(WAD):
+      //   shares = assets * WAD / convertToAssets(WAD)
+      // This equals the standard ERC-4626 convertToShares for a linear vault
+      // (constant exchange rate), so the derived floor stays correct.
+      const WAD = 10n ** 18n;
+      const assetsPerWadShares = await this.convertToAssets(WAD);
+      if (assetsPerWadShares === 0n) {
+        throw new Error(
+          "VaultReader.convertToShares: convertToShares reverted and " +
+            "convertToAssets(1e18) returned 0 — cannot derive shares (div-by-zero).",
+        );
+      }
+      return (assets * WAD) / assetsPerWadShares;
+    }
   }
 }

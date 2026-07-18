@@ -1866,7 +1866,12 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       policyId: asPolicyId(0n),
       nonceSlot: base.nonceSlot,
       nonceBit: base.nonceBit,
-      executionKind: "OWNER_DIRECT",
+      // Users act through the executor, so on-chain validate*() sees the
+      // executor as the caller — OWNER_DIRECT (executionCaller == owner) can
+      // never satisfy and reverts ExecutionKindMismatch. Default to the
+      // permissionless keeper path (owner's signature still fully binds
+      // bounds/nonce/deadline); callers may opt into OWNER_DIRECT explicitly.
+      executionKind: input.executionKind ?? "KEEPER_PERMISSIONLESS",
       deadline: base.deadline,
       quoteBlockNumber: base.quoteBlockNumber,
       maxQuoteAgeBlocks: DEFAULT_MAX_QUOTE_AGE_BLOCKS,
