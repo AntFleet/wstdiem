@@ -42,6 +42,15 @@ contract MockWstDiemVault {
         return shares * totalAssets / totalSupply;
     }
 
+    /// @notice Canonical ERC-4626 floor conversion of assets → shares.
+    /// @dev Mirrors convertToAssets: empty vault (no supply) mints 1:1; a
+    ///      supply-without-assets vault is degenerate and reverts.
+    function convertToShares(uint256 assets) external view returns (uint256) {
+        if (totalSupply == 0) return assets;
+        require(totalAssets != 0, "vault: no assets");
+        return assets * totalSupply / totalAssets;
+    }
+
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         require(IMockVaultAsset(asset).transferFrom(msg.sender, address(this), assets), "vault: pull");
         shares = assets; // 1:1 mint keeps executor collateral accounting exact against mocks.

@@ -17,6 +17,7 @@ import {
   AUTOMATION_BOUNDS_TYPEHASH,
   SPENDER_LIST_TYPEHASH,
   ALLOWANCE_SCHEDULE_TYPEHASH,
+  MARKET_PARAMS_TYPEHASH,
 } from "./typehashes.js";
 
 export interface IdentityInputs {
@@ -287,15 +288,16 @@ export interface MorphoMarketParams {
 }
 
 const MARKET_PARAMS_PARAMS = parseAbiParameters(
-  "address, address, address, address, uint256",
+  "bytes32, address, address, address, address, uint256",
 );
 
-// NOTE: _hashMarketParams in LoopV1Hashing does NOT prepend a typehash — it is
-// just keccak256(abi.encode(loanToken, collateralToken, oracle, irm, lltv)).
-// We mirror that exactly to match on-chain digest.
+// MorphoMarketParams is a referenced struct in the canonical action encodeType,
+// so _hashMarketParams in LoopV1Hashing prefixes MORPHO_MARKET_PARAMS_TYPEHASH.
+// This mirrors viem's hashStruct(MorphoMarketParams) exactly.
 export function hashMarketParams(p: MorphoMarketParams): Hex {
   return keccak256(
     encodeAbiParameters(MARKET_PARAMS_PARAMS, [
+      MARKET_PARAMS_TYPEHASH,
       p.loanToken,
       p.collateralToken,
       p.oracle,

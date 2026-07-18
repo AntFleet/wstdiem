@@ -133,6 +133,7 @@ import {
   buildActionEvidence,
 } from "../evidence/encoder.js";
 import { computeDomainSeparator, type Eip712Domain, ZERO_SALT } from "../eip712/domain.js";
+import { buildActionTypedData } from "../eip712/typed-data.js";
 import {
   computeAutomationExecDigest,
   computeExitDigest,
@@ -2685,19 +2686,20 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     // string would have produced a domain separator the on-chain validator's
     // recompute rejects on every Open/Rebalance/Exit/Revoke/AutomationExec.
     const isForce = action.primaryType === "ForceExit";
-    return {
-      domain: {
-        name: isForce ? "WSTDIEM ForceExit" : "WSTDIEM Loop",
-        version: "1",
-        chainId: this.config.chainId,
-        verifyingContract: isForce
-          ? this.config.contracts.loopForceExitAuthorizer
-          : this.config.contracts.loopAuthorization,
-        salt: ZERO_SALT,
-      },
-      primaryType: action.primaryType,
-      message: { action, marketParams, subHashes },
+    const domain = {
+      name: isForce ? "WSTDIEM ForceExit" : "WSTDIEM Loop",
+      version: "1",
+      chainId: this.config.chainId,
+      verifyingContract: isForce
+        ? this.config.contracts.loopForceExitAuthorizer
+        : this.config.contracts.loopAuthorization,
+      salt: ZERO_SALT,
     };
+    // PR (Phase A): return canonical viem-signable typed data so a wallet's
+    // eth_signTypedData_v4 reproduces the on-chain digest. The `types` map and
+    // restructured `message` are built in eip712/typed-data.ts and proven
+    // equivalent to computeDigest in test/eip712-wallet-parity.test.ts.
+    return buildActionTypedData(action, marketParams, subHashes, domain);
   }
 
   // ─── PR-17 Gap 3: authorizerNameFor ──────────────────────────────────────

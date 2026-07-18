@@ -1,15 +1,20 @@
 // EIP-712 typehash constants per the SDK type definitions and the contract
 // snapshot at test/foundry/v2/snapshots/typehashes.json.
 //
-// IMPORTANT: WSTDIEM uses a non-standard EIP-712 hashing scheme: each typehash
-// constant is keccak256 of only its OWN type definition, not the full EIP-712
-// encodeType output that recursively includes nested struct definitions sorted
-// alphabetically. The contract's hashStruct functions manually concatenate the
-// typehash with pre-computed sub-struct hashes via abi.encode.
+// The top-level action typehashes (OPEN/REBALANCE/EXIT/FORCE_EXIT/REVOKE/
+// AUTOMATION_EXEC) and MorphoMarketParams are CANONICAL EIP-712 encodeType
+// strings: the primary type followed by the definitions of ALL referenced
+// structs, sorted alphabetically by type name. These strings are derived from
+// viem's encodeType (the EIP-712 reference implementation), so a wallet's
+// eth_signTypedData_v4 reproduces the contract's hashOpen(...) and this SDK's
+// digest byte-for-byte. See test/eip712-wallet-parity.test.ts for the oracle.
 //
-// The SDK MUST mirror this byte-for-byte — using viem's hashTypedData() with
-// standard EIP-712 would produce a DIFFERENT digest and the on-chain signature
-// check would fail. See src/eip712/digest.ts for the matching encoder.
+// Leaf structs (ActionIdentity, Freshness, MorphoMarketParams, *Bounds,
+// DigestHashes) have no nested struct references, so their typehash is just
+// keccak256 of their own single-struct definition — identical whether computed
+// canonically or standalone. The contract's hashStruct functions concatenate
+// the typehash with pre-computed sub-struct hashes via abi.encode; see
+// src/eip712/digest.ts and src/eip712/sub-hashes.ts for the matching encoder.
 
 import { keccak256, toBytes } from "viem";
 import type { Hex } from "../types/branded.js";
@@ -30,6 +35,8 @@ export const TYPE_PREIMAGES = {
     "FeeCaps(uint256 flashFeeCap,uint256 protocolFeeCap,uint256 automationFeeCap)",
   DIGEST_HASHES:
     "DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)",
+  MARKET_PARAMS:
+    "MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)",
   EVIDENCE_SOURCE:
     "EvidenceSource(bytes32 sourceId,address sourceAddress,uint8 status,uint256 lastUpdateBlock,bytes32 valueHash)",
   EVIDENCE_BUNDLE:
@@ -54,17 +61,17 @@ export const TYPE_PREIMAGES = {
   AUTOMATION_BOUNDS:
     "AutomationBounds(bytes32 triggerConditionHash,uint8 underlyingPrimaryType,bytes32 underlyingActionHash,bytes32 policyHash,bytes32 boundSubsetHash,uint256 notBeforeBlock,uint256 notAfterBlock)",
   OPEN:
-    "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)",
+    "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
   REBALANCE:
-    "Rebalance(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,RebalanceBounds bounds,DigestHashes hashes)",
+    "Rebalance(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,RebalanceBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)RebalanceBounds(uint16 targetLeverageBps,uint16 targetLeverageToleranceBps,uint256 minPostHealthFactor,uint16 minLiquidationDistanceBps,uint256 maxDebtIncrease,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
   EXIT:
-    "Exit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ExitBounds bounds,DigestHashes hashes)",
+    "Exit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ExitBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)ExitBounds(uint256 minRepayment,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash,bool repayOnly,bool acceptsThirdPartyRepay)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)",
   FORCE_EXIT:
-    "ForceExit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ForceExitBounds bounds,DigestHashes hashes)",
+    "ForceExit(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,ForceExitBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)ForceExitBounds(uint256 minRepayment,uint256 maxCollateralSold,uint16 looseSlippageBps,uint256 looseFlashFeeCap,uint16 maxCurvePositionShareBps,uint8 acknowledgedRisks)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)",
   REVOKE:
-    "Revoke(ActionIdentity identity,Freshness freshness,uint8 executionKind,RevokeBounds bounds,DigestHashes hashes)",
+    "Revoke(ActionIdentity identity,Freshness freshness,uint8 executionKind,RevokeBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)RevokeBounds(uint64 policyId,uint8 policyClass,uint256 effectiveBlock)",
   AUTOMATION_EXEC:
-    "AutomationExec(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,AutomationBounds bounds,DigestHashes hashes)",
+    "AutomationExec(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,AutomationBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)AutomationBounds(bytes32 triggerConditionHash,uint8 underlyingPrimaryType,bytes32 underlyingActionHash,bytes32 policyHash,bytes32 boundSubsetHash,uint256 notBeforeBlock,uint256 notAfterBlock)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)",
   PREIMAGE_PROOF:
     "Eip1271PreimageDisplayProof(address owner,uint8 primaryType,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,uint8 acknowledgedRisks,uint8 policyClass,bytes32 market,uint256 registryVersion,uint248 nonceSlot,uint8 nonceBit,uint256 maxCollateralSold,uint256 maxDebtIncrease,uint256 deadline,address verifyingContract)",
 } as const;
@@ -94,6 +101,7 @@ export const ACTION_IDENTITY_TYPEHASH = computed.ACTION_IDENTITY;
 export const FRESHNESS_TYPEHASH = computed.FRESHNESS;
 export const FEE_CAPS_TYPEHASH = computed.FEE_CAPS;
 export const DIGEST_HASHES_TYPEHASH = computed.DIGEST_HASHES;
+export const MARKET_PARAMS_TYPEHASH = computed.MARKET_PARAMS;
 export const EVIDENCE_SOURCE_TYPEHASH = computed.EVIDENCE_SOURCE;
 export const EVIDENCE_BUNDLE_TYPEHASH = computed.EVIDENCE_BUNDLE;
 export const SPENDER_LIST_TYPEHASH = computed.SPENDER_LIST;

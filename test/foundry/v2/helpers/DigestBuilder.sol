@@ -167,7 +167,16 @@ library DigestBuilder {
     }
 
     function _hashMarketParams(LoopV1Types.MorphoMarketParams memory params) private pure returns (bytes32) {
-        return keccak256(abi.encode(params.loanToken, params.collateralToken, params.oracle, params.irm, params.lltv));
+        return keccak256(
+            abi.encode(
+                LoopV1EIP712.MORPHO_MARKET_PARAMS_TYPEHASH,
+                params.loanToken,
+                params.collateralToken,
+                params.oracle,
+                params.irm,
+                params.lltv
+            )
+        );
     }
 
     function _hashOpenBounds(LoopV1EIP712.OpenBounds memory bounds) private pure returns (bytes32) {

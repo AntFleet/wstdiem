@@ -13,6 +13,8 @@ export const PINNED_TYPEHASHES = {
     "0x88c1fba7dda3ffd12d58f70b2b14a7d805ffcf83d2beabd55bd2fe330a6f10ba",
   DIGEST_HASHES_TYPEHASH:
     "0x0b5f1f9ee52c2d672eb66a2dd7432dcaf9ba09cd536a70c8001e8a9cb7b6f119",
+  MARKET_PARAMS_TYPEHASH:
+    "0x9902c64bfcbd310d935c0858d91b39aa78a4dcc3eff17f4d8631b8517b6a0546",
   EVIDENCE_SOURCE_TYPEHASH:
     "0xdba0e637435413fa361eac9297ca392a1c028a0b9eb8d5375d997e2d0f756765",
   EVIDENCE_BUNDLE_TYPEHASH:
@@ -39,18 +41,22 @@ export const PINNED_TYPEHASHES = {
     "0xc32436bf46e8d08929a21e1817c6ffed64ee1060512e4e237a1dbbe95f8b67d9",
   AUTOMATION_BOUNDS_TYPEHASH:
     "0xe937c18ccb6e6f998ffdbb90a380eafd46e05c4a47840a5c4f3a64a15f4f266b",
+  // Action typehashes are canonical EIP-712 encodeType hashes (primary type +
+  // referenced-struct definitions sorted alphabetically). Re-baselined in
+  // Phase A when MorphoMarketParams gained a typehash and the action encodeType
+  // strings gained their referenced-struct suffixes.
   OPEN_TYPEHASH:
-    "0x2bf326ec023d5505d6e268c1f605a44c399dadaeab0076ba7bd48261d09d3cfc",
+    "0x843aa42882f702f45a618dbc1cca689093a1f354b5a514aea561343c7b06e884",
   REBALANCE_TYPEHASH:
-    "0xf256414d319bebda5c008b5d2f67aa2e09fa6c688278eecd676dfccece1c7709",
+    "0x71e9d21879e5766f0db9cd274146777299cf154947314e92cc1ff899095cfe5c",
   EXIT_TYPEHASH:
-    "0xccac07a147f55c08855564121c8ccdc3b1352f8347f63bc95cf4ba0de2dab231",
+    "0x01f969dbea5450b7d9fd93a59bbc2a1077b31223f57223c37136786ebf362816",
   FORCE_EXIT_TYPEHASH:
-    "0x04ba9640cab2caceb652e1928cd497f46de1a59d89a11c39185825b1f8b34de1",
+    "0xc0633b3ec1244cd5f19708c52d4e703e6a394642149555e9ecd47b42ee555dba",
   REVOKE_TYPEHASH:
-    "0x272281406c23225b34295b159d27a50245e0ada5850e679be7ea030def11f28c",
+    "0x5bc2c09caa66e548017a47579226e2cad5eeaeaa87754155861c5ee95d6fc1c7",
   AUTOMATION_EXEC_TYPEHASH:
-    "0xc3cc6b85e7d0810b5df24ab654f52071104c552393b0e8fddd73713fa8248033",
+    "0x12c176744ffccfe3d475b78289fbce079da25a5c3fd1cf01dd88b50e3c756aa9",
   PREIMAGE_PROOF_TYPEHASH:
     "0xec920e6eeadf896e41868a1db4d4d57cdf529b452b8149386d38231f320e5f39",
 } as const;
