@@ -1,18 +1,44 @@
 import { describe, it, expect } from "vitest";
-import { ContractFunctionExecutionError } from "viem";
+import {
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+} from "viem";
 import { RegistryReader, AuthorizationReader, MorphoReader, ChainlinkReader, SequencerFeedReader, VaultReader } from "../src/live/readers/index.js";
 import { FakePublicClient } from "./live-helpers.js";
 
-/** A viem ContractFunctionExecutionError instance, as thrown when an on-chain
- * call reverts or the function is absent — the only error class the VaultReader
- * fallback is allowed to swallow. Built via the prototype to skip viem's heavy
- * constructor-time formatting (which needs a fully-formed revert cause). */
+/** A viem ContractFunctionExecutionError WRAPPING A GENUINE REVERT — the shape
+ * viem produces when a vault reverts or the function is absent (the true cause
+ * lives in `.cause`). This is the only error the VaultReader fallback is allowed
+ * to swallow. Built via prototypes to skip viem's heavy constructor formatting. */
 function contractRevert(): ContractFunctionExecutionError {
+  const cause = Object.create(
+    ContractFunctionRevertedError.prototype,
+  ) as ContractFunctionRevertedError;
+  (cause as { message: string }).message = "execution reverted";
+  (cause as { name: string }).name = "ContractFunctionRevertedError";
   const err = Object.create(
     ContractFunctionExecutionError.prototype,
   ) as ContractFunctionExecutionError;
   (err as { message: string }).message = "execution reverted: function absent";
   (err as { name: string }).name = "ContractFunctionExecutionError";
+  (err as { cause: unknown }).cause = cause;
+  return err;
+}
+
+/** A viem ContractFunctionExecutionError WRAPPING A TRANSPORT failure (e.g. an
+ * RPC timeout / 503). viem wraps these in the SAME outer class as reverts, with
+ * the transport error as `.cause` — so the outer type alone can't distinguish
+ * them. The fallback MUST rethrow this rather than derive a floor from a bad
+ * read. This is exactly the round-2 fail-open the cause-inspection fix closes. */
+function wrappedTransportError(): ContractFunctionExecutionError {
+  const err = Object.create(
+    ContractFunctionExecutionError.prototype,
+  ) as ContractFunctionExecutionError;
+  (err as { message: string }).message = "HTTP request failed: 503";
+  (err as { name: string }).name = "ContractFunctionExecutionError";
+  (err as { cause: unknown }).cause = new Error(
+    "HTTP request failed: 503 Service Unavailable",
+  );
   return err;
 }
 
@@ -310,6 +336,26 @@ describe("VaultReader", () => {
     const vault = new VaultReader(fake.asPublicClient(), VAULT);
     await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
     // Prove the fallback was never entered: no raw NAV reads happened.
+    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
+    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
+  });
+
+  it("convertToShares rethrows a viem-WRAPPED transport error (CFEE whose cause is not a revert)", async () => {
+    // The real viem hazard: readContract wraps EVERY failure — including
+    // transport/timeout — in a ContractFunctionExecutionError, with the true
+    // cause in `.cause`. The outer instanceof check is therefore insufficient;
+    // only a revert/zero-data cause may trigger the fallback.
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw wrappedTransportError();
+        },
+        totalSupply: () => 1_000n,
+        totalAssets: () => 1_000n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
     expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
     expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
   });

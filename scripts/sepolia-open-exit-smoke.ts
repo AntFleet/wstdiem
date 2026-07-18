@@ -15,7 +15,7 @@
  * Env flags:
  *   OPEN_BROADCAST=1   broadcast the OPEN tx (else simulate only)
  *   EXIT_BROADCAST=1   broadcast the EXIT tx (else simulate only)
- *   EQUITY_WEI=...     wstDIEM equity to pre-supply as Morpho collateral (default 2e18)
+ *   EQUITY_WEI=...     wstDIEM equity used for open bounds sizing (default 1e18)
  *
  * Env overrides (all fall back to the documented Base Sepolia defaults below):
  *   SEPOLIA_RPC_URL          JSON-RPC endpoint
@@ -45,6 +45,10 @@ import { createSdk, CANONICAL_ERRORS } from "../sdk/dist/index.js";
 // All operational parameters are env-overridable; the defaults are the
 // documented Base Sepolia deployment so the script runs with no env set.
 const env = (key: string, fallback: string): string => process.env[key] ?? fallback;
+const envBig = (key: string, fallback: bigint): bigint => {
+  const v = process.env[key];
+  return v === undefined || v === "" ? fallback : BigInt(v);
+};
 
 const RPC = env("SEPOLIA_RPC_URL", "https://base-sepolia.drpc.org");
 const OWNER = env(
@@ -214,7 +218,7 @@ async function main() {
   });
 
   // ════════════════ OPEN ════════════════
-  const collateralAmount = 1_000_000_000_000_000_000n; // 1e18 (bounds sizing)
+  const collateralAmount = envBig("EQUITY_WEI", 1_000_000_000_000_000_000n); // default 1e18 (bounds sizing)
   const lev = 20_000n; // 2.0x
   const slip = 50n;
   const notionalBorrow = (collateralAmount * (lev - BPS)) / BPS; // 1e18

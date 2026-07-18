@@ -1,6 +1,11 @@
 // wstDIEM ERC-4626 vault reader.
 
-import { ContractFunctionExecutionError, type PublicClient } from "viem";
+import {
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
+  type PublicClient,
+} from "viem";
 import type { Address } from "../../types/branded.js";
 import { ERC4626_ABI } from "../abis.js";
 
@@ -54,11 +59,21 @@ export class VaultReader {
       })) as bigint;
     } catch (error) {
       // Fail closed on transport/timeout/decode/wrong-chain failures: only fall
-      // back when the call actually reverted / the function is absent on-chain
-      // (viem raises ContractFunctionExecutionError for both). Any other error
-      // (network, timeout, decode, unexpected) is rethrown so a degraded RPC
-      // never silently produces a share floor from a bad read.
+      // back when the call actually reverted / the function is absent on-chain.
+      // NOTE: viem wraps EVERY readContract failure — reverts, missing-function
+      // zero-data, AND transport/timeout/decode/network — in a
+      // ContractFunctionExecutionError, tucking the true failure into `.cause`
+      // (see viem getContractError). So the outer type alone is NOT a
+      // fail-closed signal; we must inspect the cause. Fall back only when the
+      // vault genuinely reverted or returned no data (function absent);
+      // rethrow anything else so a degraded RPC never silently produces a share
+      // floor from a bad read.
       if (!(error instanceof ContractFunctionExecutionError)) throw error;
+      const cause = error.cause;
+      const vaultLacksConvertToShares =
+        cause instanceof ContractFunctionRevertedError ||
+        cause instanceof ContractFunctionZeroDataError;
+      if (!vaultLacksConvertToShares) throw error;
       // Fallback: some deployed vaults (e.g. the Sepolia mock) implement only
       // convertToAssets and revert on convertToShares. Compute the canonical
       // ERC-4626 floor from raw reads instead of inverting convertToAssets(WAD)
