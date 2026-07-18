@@ -23,6 +23,8 @@ import {
   computeRebalanceDigest,
   computeExitDigest,
   computeForceExitDigest,
+  computeRevokeDigest,
+  computeAutomationExecDigest,
 } from "../src/eip712/digest.js";
 import { buildActionTypedData } from "../src/eip712/typed-data.js";
 import {
@@ -33,6 +35,8 @@ import {
   buildExampleRebalance,
   buildExampleExit,
   buildExampleForceExit,
+  buildExampleRevoke,
+  buildExampleAutomationExec,
   asAddress,
   asBytes32,
 } from "./digest-fixtures.js";
@@ -133,6 +137,59 @@ describe("EIP-712 wallet parity: hashTypedData(typedData) === computeDigest", ()
       }),
     ).toBe(digest);
   });
+
+  it("Revoke", () => {
+    const action = buildExampleRevoke();
+    // Same placeholder bounds dispatchDigest uses in sdk-impl.ts: Phase 1
+    // revoke binds policyId only; effectiveBlock is 0 and policyClass
+    // defaults to OPEN.
+    const digest = computeRevokeDigest({
+      action,
+      domainSeparator: DS,
+      subHashes: EXAMPLE_SUB_HASHES,
+      effectiveBlock: 0n,
+      policyClass: "OPEN",
+    });
+    const td = buildActionTypedData(action, EXAMPLE_MARKET_PARAMS, EXAMPLE_SUB_HASHES, viemDomain);
+    expect(
+      hashTypedData({
+        domain: td.domain,
+        types: td.types as TypedData,
+        primaryType: td.primaryType,
+        message: td.message,
+      }),
+    ).toBe(digest);
+  });
+
+  it("AutomationExec", () => {
+    const action = buildExampleAutomationExec();
+    // Same placeholder AutomationBounds dispatchDigest builds in sdk-impl.ts.
+    // computeAutomationExecDigest overrides bounds.underlyingPrimaryType with
+    // the typed action's value regardless of what's passed here.
+    const digest = computeAutomationExecDigest({
+      action,
+      domainSeparator: DS,
+      subHashes: EXAMPLE_SUB_HASHES,
+      bounds: {
+        triggerConditionHash: action.triggerConditionHash,
+        underlyingPrimaryType: 0,
+        underlyingActionHash: action.underlyingBoundsHash,
+        policyHash: asBytes32("0x" + "00".repeat(32)),
+        boundSubsetHash: asBytes32("0x" + "00".repeat(32)),
+        notBeforeBlock: 0n,
+        notAfterBlock: 0n,
+      },
+    });
+    const td = buildActionTypedData(action, EXAMPLE_MARKET_PARAMS, EXAMPLE_SUB_HASHES, viemDomain);
+    expect(
+      hashTypedData({
+        domain: td.domain,
+        types: td.types as TypedData,
+        primaryType: td.primaryType,
+        message: td.message,
+      }),
+    ).toBe(digest);
+  });
 });
 
 // ─── Shared cross-language fixture ───────────────────────────────────────────
@@ -211,24 +268,48 @@ describe("EIP-712 shared cross-language fixture (contract == viem == SDK)", () =
       verifyingContract: asAddress(fixture.domain.verifyingContract),
       salt: asBytes32(fixture.domain.salt),
     });
+    const marketParams = {
+      loanToken: asAddress(m.marketParams.loanToken),
+      collateralToken: asAddress(m.marketParams.collateralToken),
+      oracle: asAddress(m.marketParams.oracle),
+      irm: asAddress(m.marketParams.irm),
+      lltv: BigInt(m.marketParams.lltv),
+    };
+    const subHashes = {
+      quoteHash: asBytes32(m.hashes.quoteHash),
+      spenderListHash: asBytes32(m.hashes.spenderListHash),
+      allowanceScheduleHash: asBytes32(m.hashes.allowanceScheduleHash),
+      feeCapHash: asBytes32(m.hashes.feeCapHash),
+      evidenceBundleHash: asBytes32(m.hashes.evidenceBundleHash),
+    };
     const digest = computeOpenDigest({
       action,
       domainSeparator: ds,
-      marketParams: {
-        loanToken: asAddress(m.marketParams.loanToken),
-        collateralToken: asAddress(m.marketParams.collateralToken),
-        oracle: asAddress(m.marketParams.oracle),
-        irm: asAddress(m.marketParams.irm),
-        lltv: BigInt(m.marketParams.lltv),
-      },
-      subHashes: {
-        quoteHash: asBytes32(m.hashes.quoteHash),
-        spenderListHash: asBytes32(m.hashes.spenderListHash),
-        allowanceScheduleHash: asBytes32(m.hashes.allowanceScheduleHash),
-        feeCapHash: asBytes32(m.hashes.feeCapHash),
-        evidenceBundleHash: asBytes32(m.hashes.evidenceBundleHash),
-      },
+      marketParams,
+      subHashes,
     });
     expect(digest).toBe(fixture.expectedDigest);
+
+    // Independent reference: hash the same fixture values through viem's
+    // hashTypedData directly, not only through the SDK's computeOpenDigest.
+    // This pins contract-hashOpen == viem-hashTypedData == SDK-digest from
+    // the JS side (mirrored on the Solidity side by
+    // test/foundry/v2/Eip712WalletParity.t.sol).
+    const fixtureViemDomain: TypedDataDomain = {
+      name: fixture.domain.name,
+      version: fixture.domain.version,
+      chainId: fixture.domain.chainId,
+      verifyingContract: asAddress(fixture.domain.verifyingContract),
+      salt: asBytes32(fixture.domain.salt),
+    };
+    const td = buildActionTypedData(action, marketParams, subHashes, fixtureViemDomain);
+    expect(
+      hashTypedData({
+        domain: td.domain,
+        types: td.types as TypedData,
+        primaryType: td.primaryType,
+        message: td.message,
+      }),
+    ).toBe(fixture.expectedDigest);
   });
 });
