@@ -198,4 +198,88 @@ describe("VaultReader", () => {
     expect(await vault.totalAssets()).toBe(1_050_000n);
     expect(await vault.convertToAssets(1_000n)).toBe(1_050n);
   });
+
+  // Default (flag off): convertToShares is called on-chain and its result is
+  // returned verbatim — a compliant ERC-4626 vault.
+  it("convertToShares uses the on-chain method when the vault supports it (flag off)", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => 777n,
+        // Would be read only if the NAV path were (wrongly) taken.
+        totalSupply: () => 1_000_000n,
+        totalAssets: () => 1_050_000n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    expect(await vault.convertToShares(1_000n)).toBe(777n);
+    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
+    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
+  });
+
+  // Default (flag off): ANY error from the on-chain convertToShares PROPAGATES.
+  // The SDK never infers "vault lacks convertToShares" from an error class, so a
+  // degraded/`-32603` RPC can never be misread into a NAV floor from a bad read.
+  it("convertToShares rethrows on ANY on-chain error when flag off (no silent NAV fallback)", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        convertToShares: () => {
+          throw new Error("HTTP request failed: 503 Service Unavailable");
+        },
+        totalSupply: () => 1_000n,
+        totalAssets: () => 1_000n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
+    // Prove no NAV read happened — no silent fallback.
+    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
+    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
+  });
+
+  // Flag ON (deploy declares the vault lacks convertToShares, e.g. the mock):
+  // compute the canonical ERC-4626 floor from totalSupply/totalAssets and NEVER
+  // call the on-chain convertToShares.
+  it("computes the canonical ERC-4626 floor from NAV when flag on (never calls convertToShares)", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        // If this were called the test client would record it; assert it is not.
+        convertToShares: () => 999n,
+        totalSupply: () => 1_000_000n,
+        totalAssets: () => 1_050_000n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
+    // shares = assets * totalSupply / totalAssets = 1_050_000 * 1e6 / 1.05e6 = 1_000_000.
+    expect(await vault.convertToShares(1_050_000n)).toBe(1_000_000n);
+    expect(fake.calls.some((c) => c.functionName === "convertToShares")).toBe(false);
+  });
+
+  it("NAV floor floors a non-exact ratio and never overestimates (flag on)", async () => {
+    // totalSupply=3, totalAssets=4, assets=100 → 100*3/4 = 75 exactly floored.
+    const fake = new FakePublicClient({
+      handlers: { totalSupply: () => 3n, totalAssets: () => 4n },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
+    const shares = await vault.convertToShares(100n);
+    expect(shares).toBe(75n);
+    // Must NOT overestimate: floor(assets*ts/ta) <= assets*ts/ta.
+    expect(shares * 4n).toBeLessThanOrEqual(100n * 3n);
+    expect(shares).not.toBe(76n);
+  });
+
+  it("NAV floor mints 1:1 for an empty vault, totalSupply == 0 (flag on)", async () => {
+    const fake = new FakePublicClient({
+      handlers: { totalSupply: () => 0n, totalAssets: () => 0n },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
+    expect(await vault.convertToShares(1_234n)).toBe(1_234n);
+  });
+
+  it("NAV floor throws a clear error when totalSupply != 0 and totalAssets == 0 (flag on)", async () => {
+    const fake = new FakePublicClient({
+      handlers: { totalSupply: () => 1_000n, totalAssets: () => 0n },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/cannot price/);
+  });
 });

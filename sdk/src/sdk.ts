@@ -92,7 +92,9 @@ export interface WstdiemSdk {
   // reader), an unused nonce slot/bit (authorization reader), a fresh
   // quoteBlockNumber (readClient), verifyingContract + executor (config), and
   // evidenceBundleHash (same resolveEvidence path the digest assembly uses).
-  // policyId = 0 and executionKind = OWNER_DIRECT (user-signed manual).
+  // policyId = 0 and executionKind defaults to KEEPER_PERMISSIONLESS (users act
+  // through the executor; OWNER_DIRECT reverts ExecutionKindMismatch). Callers
+  // may pass an explicit `executionKind` on the input to override the default.
   buildOpenParams(input: BuildOpenParamsInput): Promise<OpenAction>;
   buildRebalanceParams(
     input: BuildRebalanceParamsInput,

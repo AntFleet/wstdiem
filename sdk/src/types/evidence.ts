@@ -11,6 +11,9 @@ import type {
   UnixSeconds,
 } from "./branded.js";
 import type { SourceStatus } from "./enums.js";
+// Re-export so consumers that import evidence types can also pull SourceStatus
+// from this module (it is the canonical status type for EvidenceSource).
+export type { SourceStatus } from "./enums.js";
 
 // Canonical sourceId labels per §A2. The preimage suffix is appended to
 // "wstdiem.source." and hashed via keccak256 to produce the on-chain bytes32.

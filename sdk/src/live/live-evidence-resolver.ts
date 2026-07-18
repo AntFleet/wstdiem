@@ -9,7 +9,7 @@ import {
   type Hex,
 } from "viem";
 import type { Address, Bytes32 } from "../types/branded.js";
-import { asBlockNumber } from "../types/branded.js";
+import { asBlockNumber, asMarketId, asUnixSeconds } from "../types/branded.js";
 import {
   SOURCE_ID_HASHES,
   type EvidenceSource,
@@ -148,7 +148,9 @@ export function createLiveEvidenceResolver(
         sourceAddress,
         market: input.market,
         owner: input.owner,
-        morpho: deps.morphoAddress,
+        // Omit (rather than set undefined) so exactOptionalPropertyTypes
+        // accepts the optional `morpho?: Address` param.
+        ...(deps.morphoAddress !== undefined ? { morpho: deps.morphoAddress } : {}),
         registry,
         block,
       });
@@ -260,8 +262,9 @@ async function materialize(
           const up = answer === 0n;
           const value = {
             status: up ? ("up" as const) : ("down" as const),
-            startedAt: asBlockNumber(startedAt),
-            updatedAt: asBlockNumber(updatedAt),
+            // Oracle round timestamps are Unix seconds, not block numbers.
+            startedAt: asUnixSeconds(startedAt),
+            updatedAt: asUnixSeconds(updatedAt),
           };
           return {
             status: up ? "fresh" : "degraded",
@@ -272,7 +275,8 @@ async function materialize(
         }
         const value = {
           answer,
-          updatedAt: asBlockNumber(updatedAt),
+          // Chainlink round timestamp is Unix seconds, not a block number.
+          updatedAt: asUnixSeconds(updatedAt),
           roundId: round[0],
           decimals,
         };
@@ -306,7 +310,7 @@ async function materialize(
         };
       }
       case "harvest-event": {
-        const lastHarvest = await ctx.registry.lastHarvestBlock?.(ctx.market).catch(() => 0n);
+        const lastHarvest = await ctx.registry.lastHarvestBlock?.(asMarketId(ctx.market)).catch(() => 0n);
         const value = {
           lastHarvestBlock: asBlockNumber(lastHarvest ?? 0n),
           topic0:

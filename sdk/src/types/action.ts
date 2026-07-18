@@ -159,6 +159,14 @@ export interface BuildParamsCommon {
   slippageBps?: BasisPoints;
   /** Seconds from now until the action deadline. Default 600 (10 min). */
   deadlineSeconds?: number;
+  /**
+   * Execution mode the owner signs over. Defaults to `KEEPER_PERMISSIONLESS`
+   * because users act *through* the executor, so the on-chain `validateOpen`
+   * sees the executor (not the owner) as the caller — `OWNER_DIRECT` can never
+   * satisfy `executionCaller == owner` in that path. Callers who genuinely
+   * self-execute can opt into `OWNER_DIRECT`.
+   */
+  executionKind?: ExecutionKind;
 }
 
 export interface BuildOpenParamsInput extends BuildParamsCommon {

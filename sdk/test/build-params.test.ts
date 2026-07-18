@@ -98,9 +98,10 @@ describe("buildOpenParams", () => {
     // registryVersion + merkleRoot sourced from the registry reader.
     expect(action.registryVersion).toBe(7n);
     expect(action.registryMerkleRoot).toBe(MERKLE_ROOT);
-    // user-signed manual: policyId 0, OWNER_DIRECT.
+    // policyId 0; default executionKind is KEEPER_PERMISSIONLESS because users
+    // act through the executor (OWNER_DIRECT reverts ExecutionKindMismatch).
     expect(action.policyId).toBe(0n);
-    expect(action.executionKind).toBe("OWNER_DIRECT");
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     // verifyingContract + executor from config (LoopAuthorization path).
     expect(action.verifyingContract).toBe(LOOP_AUTH);
     expect(action.executor).toBe(LOOP_EXEC_V2);
@@ -115,6 +116,20 @@ describe("buildOpenParams", () => {
     expect(action.deadline).toBeGreaterThan(BigInt(Math.floor(Date.now() / 1000)));
     // evidenceBundleHash populated (non-zero-length) via resolveEvidence.
     expect(action.evidenceBundleHash).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("lets a caller opt into OWNER_DIRECT execution", async () => {
+    const { sdk } = buildSdk();
+    const action = await sdk.buildOpenParams({
+      market: MARKET,
+      owner: OWNER,
+      collateralAmount: 1_000_000n,
+      leverageBps: asBasisPoints(20_000),
+      mevProtectionMode: "PRIVATE_BUILDER",
+      mevWaiverBits: 0,
+      executionKind: "OWNER_DIRECT",
+    });
+    expect(action.executionKind).toBe("OWNER_DIRECT");
   });
 
   it("computes bounds from amount + leverage + slippage", async () => {
@@ -201,6 +216,9 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
       mevWaiverBits: 0,
     });
     expect(action.primaryType).toBe("Rebalance");
+    // Default executionKind is KEEPER_PERMISSIONLESS (users act through the
+    // executor; OWNER_DIRECT reverts ExecutionKindMismatch).
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     expect(action.bounds.targetLeverageBps).toBe(25_000);
     expect(action.bounds.maxCollateralSold).toBe(1_000_000n);
     expect(action.verifyingContract).toBe(LOOP_AUTH);
@@ -220,6 +238,7 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
       mevWaiverBits: 0,
     });
     expect(action.primaryType).toBe("Exit");
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     expect(action.routeKind).toBe("REPAY_ONLY");
     expect(action.bounds.repayOnly).toBe(true);
     expect(action.bounds.maxCollateralSold).toBe(800_000n);
@@ -236,6 +255,7 @@ describe("buildRebalanceParams / buildExitParams / buildForceExitParams", () => 
       mevWaiverBits: 0,
     });
     expect(action.primaryType).toBe("ForceExit");
+    expect(action.executionKind).toBe("KEEPER_PERMISSIONLESS");
     // ForceExit binds to the DISTINCT authorizer + executor.
     expect(action.verifyingContract).toBe(LOOP_FORCE_EXIT_AUTH);
     expect(action.executor).toBe(LOOP_FORCE_EXEC);

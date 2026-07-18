@@ -106,6 +106,17 @@ export interface WstdiemSdkConfig {
    * RPC depth). Default false — production uses createLiveEvidenceResolver.
    */
   preferPlaceholderEvidence?: boolean;
+  /**
+   * Set true ONLY when the deployed wstDIEM vault is known not to implement the
+   * ERC-4626 `convertToShares` method (e.g. the Base Sepolia mock, which exposes
+   * only `convertToAssets`). `deriveOpenBounds` then computes the share floor
+   * from `totalSupply`/`totalAssets` directly. Default false: `convertToShares`
+   * is called on-chain and ANY error propagates (fail-closed) — the SDK never
+   * infers vault capability from viem error classes, which conflate reverts,
+   * missing functions, and transport/`-32603` RPC failures. A compliant vault
+   * must leave this unset.
+   */
+  vaultConvertToSharesUnsupported?: boolean;
 }
 
 export interface WstdiemContractAddresses {
