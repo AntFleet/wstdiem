@@ -1,46 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  ContractFunctionExecutionError,
-  ContractFunctionRevertedError,
-} from "viem";
 import { RegistryReader, AuthorizationReader, MorphoReader, ChainlinkReader, SequencerFeedReader, VaultReader } from "../src/live/readers/index.js";
 import { FakePublicClient } from "./live-helpers.js";
-
-/** A viem ContractFunctionExecutionError WRAPPING A GENUINE REVERT — the shape
- * viem produces when a vault reverts or the function is absent (the true cause
- * lives in `.cause`). This is the only error the VaultReader fallback is allowed
- * to swallow. Built via prototypes to skip viem's heavy constructor formatting. */
-function contractRevert(): ContractFunctionExecutionError {
-  const cause = Object.create(
-    ContractFunctionRevertedError.prototype,
-  ) as ContractFunctionRevertedError;
-  (cause as { message: string }).message = "execution reverted";
-  (cause as { name: string }).name = "ContractFunctionRevertedError";
-  const err = Object.create(
-    ContractFunctionExecutionError.prototype,
-  ) as ContractFunctionExecutionError;
-  (err as { message: string }).message = "execution reverted: function absent";
-  (err as { name: string }).name = "ContractFunctionExecutionError";
-  (err as { cause: unknown }).cause = cause;
-  return err;
-}
-
-/** A viem ContractFunctionExecutionError WRAPPING A TRANSPORT failure (e.g. an
- * RPC timeout / 503). viem wraps these in the SAME outer class as reverts, with
- * the transport error as `.cause` — so the outer type alone can't distinguish
- * them. The fallback MUST rethrow this rather than derive a floor from a bad
- * read. This is exactly the round-2 fail-open the cause-inspection fix closes. */
-function wrappedTransportError(): ContractFunctionExecutionError {
-  const err = Object.create(
-    ContractFunctionExecutionError.prototype,
-  ) as ContractFunctionExecutionError;
-  (err as { message: string }).message = "HTTP request failed: 503";
-  (err as { name: string }).name = "ContractFunctionExecutionError";
-  (err as { cause: unknown }).cause = new Error(
-    "HTTP request failed: 503 Service Unavailable",
-  );
-  return err;
-}
 
 const LOOP_REGISTRY = "0x0000000000000000000000000000000000000101" as const;
 const LOOP_AUTH = "0x0000000000000000000000000000000000000102" as const;
@@ -239,124 +199,87 @@ describe("VaultReader", () => {
     expect(await vault.convertToAssets(1_000n)).toBe(1_050n);
   });
 
-  it("convertToShares uses the on-chain primary path when the vault implements it", async () => {
+  // Default (flag off): convertToShares is called on-chain and its result is
+  // returned verbatim — a compliant ERC-4626 vault.
+  it("convertToShares uses the on-chain method when the vault supports it (flag off)", async () => {
     const fake = new FakePublicClient({
       handlers: {
-        // Compliant vault: convertToShares answers directly.
         convertToShares: () => 777n,
-        // Would derive a different value if the fallback were (wrongly) used.
-        convertToAssets: (args) => (BigInt(args[0] as bigint) * 105n) / 100n,
-      },
-    });
-    const vault = new VaultReader(fake.asPublicClient(), VAULT);
-    expect(await vault.convertToShares(1_000n)).toBe(777n);
-    // Primary path only — no NAV inversion read.
-    expect(fake.calls.some((c) => c.functionName === "convertToAssets")).toBe(false);
-  });
-
-  it("convertToShares falls back to the canonical ERC-4626 floor when convertToShares reverts", async () => {
-    const fake = new FakePublicClient({
-      handlers: {
-        convertToShares: () => {
-          throw contractRevert();
-        },
-        // price-per-share = 1.05 → totalSupply/totalAssets = 1/1.05.
+        // Would be read only if the NAV path were (wrongly) taken.
         totalSupply: () => 1_000_000n,
         totalAssets: () => 1_050_000n,
       },
     });
     const vault = new VaultReader(fake.asPublicClient(), VAULT);
-    // shares = assets * totalSupply / totalAssets = 1_050_000 * 1e6 / 1.05e6 = 1_000_000.
-    expect(await vault.convertToShares(1_050_000n)).toBe(1_000_000n);
+    expect(await vault.convertToShares(1_000n)).toBe(777n);
+    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
+    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
   });
 
-  it("canonical fallback floors a non-exact ratio and never overestimates", async () => {
-    // totalSupply=3, totalAssets=4, assets=100 → 100*3/4 = 75 exactly floored.
+  // Default (flag off): ANY error from the on-chain convertToShares PROPAGATES.
+  // The SDK never infers "vault lacks convertToShares" from an error class, so a
+  // degraded/`-32603` RPC can never be misread into a NAV floor from a bad read.
+  it("convertToShares rethrows on ANY on-chain error when flag off (no silent NAV fallback)", async () => {
     const fake = new FakePublicClient({
       handlers: {
         convertToShares: () => {
-          throw contractRevert();
+          throw new Error("HTTP request failed: 503 Service Unavailable");
         },
-        totalSupply: () => 3n,
-        totalAssets: () => 4n,
+        totalSupply: () => 1_000n,
+        totalAssets: () => 1_000n,
       },
     });
     const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
+    // Prove no NAV read happened — no silent fallback.
+    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
+    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
+  });
+
+  // Flag ON (deploy declares the vault lacks convertToShares, e.g. the mock):
+  // compute the canonical ERC-4626 floor from totalSupply/totalAssets and NEVER
+  // call the on-chain convertToShares.
+  it("computes the canonical ERC-4626 floor from NAV when flag on (never calls convertToShares)", async () => {
+    const fake = new FakePublicClient({
+      handlers: {
+        // If this were called the test client would record it; assert it is not.
+        convertToShares: () => 999n,
+        totalSupply: () => 1_000_000n,
+        totalAssets: () => 1_050_000n,
+      },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
+    // shares = assets * totalSupply / totalAssets = 1_050_000 * 1e6 / 1.05e6 = 1_000_000.
+    expect(await vault.convertToShares(1_050_000n)).toBe(1_000_000n);
+    expect(fake.calls.some((c) => c.functionName === "convertToShares")).toBe(false);
+  });
+
+  it("NAV floor floors a non-exact ratio and never overestimates (flag on)", async () => {
+    // totalSupply=3, totalAssets=4, assets=100 → 100*3/4 = 75 exactly floored.
+    const fake = new FakePublicClient({
+      handlers: { totalSupply: () => 3n, totalAssets: () => 4n },
+    });
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
     const shares = await vault.convertToShares(100n);
     expect(shares).toBe(75n);
     // Must NOT overestimate: floor(assets*ts/ta) <= assets*ts/ta.
     expect(shares * 4n).toBeLessThanOrEqual(100n * 3n);
-    // Non-exactly-representable check: a value that rounds up would be 76.
     expect(shares).not.toBe(76n);
   });
 
-  it("canonical fallback mints 1:1 for an empty vault (totalSupply == 0)", async () => {
+  it("NAV floor mints 1:1 for an empty vault, totalSupply == 0 (flag on)", async () => {
     const fake = new FakePublicClient({
-      handlers: {
-        convertToShares: () => {
-          throw contractRevert();
-        },
-        totalSupply: () => 0n,
-        totalAssets: () => 0n,
-      },
+      handlers: { totalSupply: () => 0n, totalAssets: () => 0n },
     });
-    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
     expect(await vault.convertToShares(1_234n)).toBe(1_234n);
   });
 
-  it("canonical fallback throws a clear error when totalSupply != 0 and totalAssets == 0", async () => {
+  it("NAV floor throws a clear error when totalSupply != 0 and totalAssets == 0 (flag on)", async () => {
     const fake = new FakePublicClient({
-      handlers: {
-        convertToShares: () => {
-          throw contractRevert();
-        },
-        totalSupply: () => 1_000n,
-        totalAssets: () => 0n,
-      },
+      handlers: { totalSupply: () => 1_000n, totalAssets: () => 0n },
     });
-    const vault = new VaultReader(fake.asPublicClient(), VAULT);
+    const vault = new VaultReader(fake.asPublicClient(), VAULT, true);
     await expect(vault.convertToShares(1_000n)).rejects.toThrow(/cannot price/);
-  });
-
-  it("convertToShares rethrows a transport/unexpected error instead of falling back", async () => {
-    // A non-revert error (e.g. RPC timeout / network) must NOT be masked as a
-    // vault lacking convertToShares — it must propagate so a degraded RPC never
-    // produces a share floor from a bad read.
-    const transportErr = new Error("HTTP request failed: 503 Service Unavailable");
-    const fake = new FakePublicClient({
-      handlers: {
-        convertToShares: () => {
-          throw transportErr;
-        },
-        // If the fallback were (wrongly) taken these would be read.
-        totalSupply: () => 1_000n,
-        totalAssets: () => 1_000n,
-      },
-    });
-    const vault = new VaultReader(fake.asPublicClient(), VAULT);
-    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
-    // Prove the fallback was never entered: no raw NAV reads happened.
-    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
-    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
-  });
-
-  it("convertToShares rethrows a viem-WRAPPED transport error (CFEE whose cause is not a revert)", async () => {
-    // The real viem hazard: readContract wraps EVERY failure — including
-    // transport/timeout — in a ContractFunctionExecutionError, with the true
-    // cause in `.cause`. The outer instanceof check is therefore insufficient;
-    // only a revert/zero-data cause may trigger the fallback.
-    const fake = new FakePublicClient({
-      handlers: {
-        convertToShares: () => {
-          throw wrappedTransportError();
-        },
-        totalSupply: () => 1_000n,
-        totalAssets: () => 1_000n,
-      },
-    });
-    const vault = new VaultReader(fake.asPublicClient(), VAULT);
-    await expect(vault.convertToShares(1_000n)).rejects.toThrow(/HTTP request failed/);
-    expect(fake.calls.some((c) => c.functionName === "totalSupply")).toBe(false);
-    expect(fake.calls.some((c) => c.functionName === "totalAssets")).toBe(false);
   });
 });

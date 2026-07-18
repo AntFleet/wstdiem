@@ -1910,7 +1910,11 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     // only equals the share amount when the vault trades 1:1 (i.e. before any
     // yield accrual). Using convertToShares makes the signed bound correct for a
     // vault whose exchange rate has drifted from parity.
-    const vault = new VaultReader(this.readClient, this.bundleFor(input.market).vault);
+    const vault = new VaultReader(
+      this.readClient,
+      this.bundleFor(input.market).vault,
+      this.config.vaultConvertToSharesUnsupported ?? false,
+    );
     const expectedShares = await vault.convertToShares(notionalBorrow);
     const minWstDiemReceived = (expectedShares * (BPS_DENOM - slip)) / BPS_DENOM;
     return {

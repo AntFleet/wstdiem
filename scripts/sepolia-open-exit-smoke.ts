@@ -172,6 +172,9 @@ async function main() {
     initialMarkets: [BUNDLE],
     allowSingleClientReads: true,
     strictAnchorCrossCheck: false,
+    // The Base Sepolia MOCK vault implements only convertToAssets; declare it
+    // so buildOpenParams computes the share floor from NAV (no error-inference).
+    vaultConvertToSharesUnsupported: true,
     uniswapV3Quoter: undefined,
   } as any);
 
