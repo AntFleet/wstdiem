@@ -19,6 +19,55 @@ open-loop path is wired end-to-end and proven against mock protocols locally; wh
 is the on-chain broadcast (needs your key/RPC), pointing envs at deployed addresses, and a
 Playwright e2e pass against the live deployment.
 
+> ⚠️ **This summary is superseded by the P0 blocker below (2026-07-18).** A fresh redeploy
+> is currently **impossible** — three core contracts exceed the EIP-170 size limit. See
+> "🚨 P0 LAUNCH BLOCKER" immediately below.
+
+---
+
+## 🚨 P0 LAUNCH BLOCKER (2026-07-18): core contracts exceed EIP-170 size limit
+
+**The protocol cannot be deployed as it stands on `main`.** A fresh Base Sepolia redeploy
+(Phase B of the EIP-712 canonicalization work) failed at broadcast: three CORE contracts
+exceed the hard 24,576-byte EIP-170 runtime code-size limit.
+
+| Contract | Size (runs=200, via_ir) | Over by |
+|---|---|---|
+| `LoopRegistry.sol` | 29,398 | **+4,822** |
+| `LoopAuthorization.sol` | 25,722 | +1,146 |
+| `LoopExecutorV2.sol` | 25,556 | +980 |
+
+- **Chronic, not new:** the July 12 deployed registry was **24,447 bytes — only 129 bytes
+  under the ceiling.** Accumulated audit-residual fixes and the EIP-712 canonicalization
+  tipped it over. No single change is the culprit.
+- **Config tweak is insufficient:** even `optimizer_runs=1` still fails the EIP-170 check.
+  A **structural refactor** is required — convert selected inlined internal libraries to
+  external (delegatecall) libraries and/or split `LoopRegistry` (110 public fns) along an
+  admin/config vs core vs fingerprint seam.
+- **Nothing was deployed** — the deployer wallet is untouched; no on-chain cleanup needed.
+
+**Refactor plan** (full detail + security analysis in GitHub issue #7):
+- Premise correction: the heavy `LoopV1*` validation/hashing libraries are **already external**
+  — extraction alone is largely spent. Auth (+1,146) and Executor (+980) are still fixable by
+  targeted extraction, but **LoopRegistry (+4,822) needs a contract SPLIT** (its overage is its
+  own fingerprint-validation subsystem, which reads contract storage → cannot be a delegatecall lib).
+- **Phase 1 (Executor, low risk):** extract position/health math → new `LoopV1PositionMath` lib +
+  `LoopV1MorphoCalldata` internal→public. → under limit with headroom.
+- **Phase 2 (Auth, low–med):** `SignatureCheckerLib`→public + extract transient arm/clear/context
+  plumbing → new `LoopV1ActionContext` lib (must reuse exact slot constants) + delete dead code.
+- **Phase 3 (Registry, mandatory, highest effort ~2–4d):** split the fingerprint subsystem into a
+  new `LoopFingerprintRegistry` contract; core keeps the `ILoopRegistry` ABI + a thin
+  `validateExternalConfig` forwarder (callers unchanged); SDK/indexer point fingerprint reads at
+  the new address.
+- **Invariants:** EIP-712 action digests must stay byte-identical (provably unaffected — no move
+  touches `LoopV1Hashing`/typehashes/domain separator); 241 forge tests + the wallet-parity oracle
+  must stay green; target ≥2 KB headroom.
+- Effort ≈ 3–6 days total. Config-only fix confirmed insufficient (optimizer_runs=1 still fails).
+
+**Impact on the EIP-712 redeploy (#3):** Phase A (canonical digests) is MERGED. Phase B
+(redeploy) and Phase C (live signTypedData smoke) are **paused behind this blocker** — the
+redeploy cannot happen until the contracts fit under EIP-170.
+
 ---
 
 ## Work items (ordered)
