@@ -7,6 +7,7 @@ import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
 import {LoopV1EIP712} from "./libraries/LoopV1EIP712.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
+import {LoopV1PositionMath} from "./libraries/LoopV1PositionMath.sol";
 import {LoopV1Types} from "./libraries/LoopV1Types.sol";
 
 interface IERC20Minimal {
@@ -36,35 +37,9 @@ interface IUniswapV3FactoryMinimal {
     function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
 }
 
-interface IMorphoPositionMinimal {
-    function position(bytes32 market, address owner)
-        external
-        view
-        returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral);
-
-    function market(bytes32 market)
-        external
-        view
-        returns (
-            uint128 totalSupplyAssets,
-            uint128 totalSupplyShares,
-            uint128 totalBorrowAssets,
-            uint128 totalBorrowShares,
-            uint128 lastUpdate,
-            uint128 fee
-        );
-}
-
-interface IOraclePriceMinimal {
-    function price() external view returns (uint256);
-}
-
 /// @notice Shared Phase 1 executor plumbing for flash callbacks, arming, approvals, and cleanup.
 abstract contract LoopExecutorBase is ILoopV1Events {
     uint256 internal constant BASE_CHAIN_ID = 8453;
-    /// @dev Morpho Blue oracle scale: price is 1e36-normalized for 18-decimal token pairs.
-    uint256 internal constant MORPHO_ORACLE_PRICE_SCALE = 1e36;
-    uint256 internal constant WAD = 1e18;
 
     bytes32 internal constant WSTDIEM_REENTRANCY_SLOT = keccak256("wstdiem.loop.executor.base.reentrancy.v1");
     bytes32 internal constant WSTDIEM_ARM_OPEN_SLOT = keccak256("wstdiem.loop.executor.v2.arm.Open.v1");
@@ -360,192 +335,23 @@ abstract contract LoopExecutorBase is ILoopV1Events {
     }
 
     function _snapshotPosition(FlashContext memory context) internal view returns (PositionSnapshot memory snapshot) {
-        (snapshot.debt, snapshot.collateral, snapshot.healthFactor) =
-            _readMorphoPosition(context.market, context.owner, context.params);
-        snapshot.leverageBps = _currentLeverageBps(context.owner, context.market, snapshot);
-        snapshot.liquidationDistanceBps = _currentLiquidationDistanceBps(context.owner, context.market, snapshot);
-        snapshot.utilizationBps = _currentUtilizationBps(context.market);
-    }
-
-    function _readMorphoPosition(bytes32 market, address owner, LoopV1Types.MorphoMarketParams memory params)
-        internal
-        view
-        returns (uint256 debt, uint256 collateral, uint256 healthFactor)
-    {
-        address morpho = loopRegistry.morpho();
-        if (morpho == address(0)) revert LoopV1Errors.MorphoEvidenceMissing();
-        uint256 borrowShares;
-        try IMorphoPositionMinimal(morpho).position(market, owner) returns (
-            uint256, uint128 borrowShares_, uint128 collateralAssets
-        ) {
-            borrowShares = uint256(borrowShares_);
-            collateral = uint256(collateralAssets);
-        } catch {
-            revert LoopV1Errors.MorphoEvidenceMissing();
-        }
-        // Critical (2026-06-17 F01): Morpho stores borrow as shares. Convert to assets so repay,
-        // flash sizing, and HF use the interest-accrued debt, not raw share units.
-        debt = _borrowSharesToAssets(morpho, market, borrowShares);
-        healthFactor = _healthFactorWad(debt, collateral, params);
-    }
-
-    function _borrowSharesToAssets(address morpho, bytes32 market, uint256 borrowShares)
-        internal
-        view
-        returns (uint256 assets)
-    {
-        if (borrowShares == 0) return 0;
-        try IMorphoPositionMinimal(morpho).market(market) returns (
-            uint128, uint128, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128, uint128
-        ) {
-            if (totalBorrowShares == 0) return borrowShares;
-            // Morpho Blue ceilings asset conversion on repay; use ceilDiv so we never under-repay.
-            return (borrowShares * uint256(totalBorrowAssets) + uint256(totalBorrowShares) - 1)
-                / uint256(totalBorrowShares);
-        } catch {
-            revert LoopV1Errors.MorphoEvidenceMissing();
-        }
-    }
-
-    function _healthFactorWad(uint256 debt, uint256 collateral, LoopV1Types.MorphoMarketParams memory params)
-        internal
-        view
-        returns (uint256)
-    {
-        if (debt == 0) return type(uint256).max;
-        uint256 priceWad = WAD;
-        if (params.oracle != address(0)) {
-            try IOraclePriceMinimal(params.oracle).price() returns (uint256 oraclePrice) {
-                if (oraclePrice != 0) priceWad = _normalizeOraclePriceToWad(oraclePrice);
-            } catch {}
-        }
-        uint256 lltvWad = params.lltv <= 10_000 ? params.lltv * 1e14 : params.lltv;
-        if (lltvWad == 0) revert LoopV1Errors.HealthIndeterminate();
-        // collateralValue (WAD units of loan token) * lltv / debt
-        return collateral * priceWad / WAD * lltvWad / debt;
-    }
-
-    /// @dev Accept Morpho-scale (≈1e36) or WAD-scale (1e18) oracle prices used by mocks.
-    function _normalizeOraclePriceToWad(uint256 rawPrice) internal pure returns (uint256) {
-        if (rawPrice == 0) return 0;
-        // Morpho Blue collateral/loan price for 18-decimal pairs is around 1e36.
-        if (rawPrice >= 1e30) return rawPrice / (MORPHO_ORACLE_PRICE_SCALE / WAD);
-        return rawPrice;
+        return LoopV1PositionMath.snapshotPosition(
+            loopRegistry.morpho(), loopRegistry.loopRiskOracleAdapter(), context.market, context.owner, context.params
+        );
     }
 
     function _enforcePostState(FlashContext memory context, LoopV1Types.LoopActionResult memory result) internal view {
-        PositionSnapshot memory postState = _snapshotPosition(context);
-        if (_isDebtReducingMode(context)) {
-            if (postState.debt >= context.preState.debt) revert LoopV1Errors.DebtNotReduced();
-            if (postState.healthFactor <= context.preState.healthFactor) {
-                revert LoopV1Errors.HealthFactorBoundFailure();
-            }
-        }
-        if (context.minPostHealthFactor != 0 && postState.healthFactor < context.minPostHealthFactor) {
-            revert LoopV1Errors.HealthFactorBoundFailure();
-        }
-        if (
-            context.minLiquidationDistanceBps != 0
-                && postState.liquidationDistanceBps < context.minLiquidationDistanceBps
-        ) revert LoopV1Errors.LiquidationDistanceBoundFailure();
-        if (context.maxMorphoUtilizationImpactBps != 0) {
-            uint16 impact = postState.utilizationBps > context.preState.utilizationBps
-                ? postState.utilizationBps - context.preState.utilizationBps
-                : uint16(0);
-            if (impact > context.maxMorphoUtilizationImpactBps) revert LoopV1Errors.UtilizationImpactExceeded();
-        }
-        if (context.maxLeverageBps != 0 && postState.leverageBps > context.maxLeverageBps) {
-            revert LoopV1Errors.LeverageBoundFailure();
-        }
-        if (context.targetLeverageBps != 0) {
-            uint256 delta = postState.leverageBps > context.targetLeverageBps
-                ? postState.leverageBps - context.targetLeverageBps
-                : context.targetLeverageBps - postState.leverageBps;
-            if (delta > context.targetLeverageToleranceBps) revert LoopV1Errors.LeverageBoundFailure();
-        }
-        if (context.minWstDiemReceived != 0 && result.collateralWstDiem < context.minWstDiemReceived) {
-            revert LoopV1Errors.VaultDepositShortfall();
-        }
-        if (context.maxBorrowedDiem != 0) {
-            if (result.borrowedDiem < context.minBorrowedDiem || result.borrowedDiem > context.maxBorrowedDiem) {
-                revert LoopV1Errors.BorrowedDiemOutOfBand();
-            }
-        }
+        LoopV1PositionMath.enforcePostState(context, result, _snapshotPosition(context));
     }
 
     function _enforceCurveBounds(FlashContext memory context, uint256 diemReceived) internal view {
-        if (context.maxSlippageBps != 0 && context.withdrawCollateralAssets != 0) {
-            uint256 quote = context.withdrawCollateralAssets;
-            uint256 delta = diemReceived > quote ? diemReceived - quote : quote - diemReceived;
-            if (delta * 10_000 > quote * context.maxSlippageBps) revert LoopV1Errors.CurveSlippageExceeded();
-        }
-        if (context.maxCurvePositionShareBps != 0 && context.withdrawCollateralAssets != 0) {
-            uint256 depth = _curveDepth(context.market);
-            if (depth == 0) revert LoopV1Errors.CurveLiquidityInsufficient();
-            if (context.withdrawCollateralAssets * 10_000 > depth * context.maxCurvePositionShareBps) {
-                revert LoopV1Errors.CurveShareExceeded();
-            }
-        }
-    }
-
-    function _curveDepth(bytes32 market) internal view returns (uint256 depth) {
-        address curve = loopRegistry.curvePool(market);
-        if (curve == address(0)) return 0;
-        try ICurvePoolMinimal(curve).balances(1) returns (uint256 balance) {
-            return balance;
-        } catch {
-            return 0;
-        }
-    }
-
-    function _currentLeverageBps(address owner, bytes32 market, PositionSnapshot memory fallbackSnapshot)
-        private
-        view
-        returns (uint16)
-    {
-        address adapter = loopRegistry.loopRiskOracleAdapter();
-        if (adapter != address(0)) {
-            (bool ok, bytes memory data) =
-                adapter.staticcall(abi.encodeWithSignature("currentLeverageBps(address,bytes32)", owner, market));
-            if (ok && data.length >= 32) return uint16(abi.decode(data, (uint256)));
-        }
-        if (fallbackSnapshot.collateral == 0) return fallbackSnapshot.debt == 0 ? 0 : type(uint16).max;
-        uint256 leverage = fallbackSnapshot.debt * 10_000 / fallbackSnapshot.collateral;
-        return leverage > type(uint16).max ? type(uint16).max : uint16(leverage);
-    }
-
-    function _currentLiquidationDistanceBps(address owner, bytes32 market, PositionSnapshot memory fallbackSnapshot)
-        private
-        view
-        returns (uint16)
-    {
-        address adapter = loopRegistry.loopRiskOracleAdapter();
-        if (adapter != address(0)) {
-            (bool ok, bytes memory data) = adapter.staticcall(
-                abi.encodeWithSignature("currentLiquidationDistanceBps(address,bytes32)", owner, market)
-            );
-            if (ok && data.length >= 32) return uint16(abi.decode(data, (uint256)));
-        }
-        if (fallbackSnapshot.healthFactor == type(uint256).max) return type(uint16).max;
-        if (fallbackSnapshot.healthFactor <= 1e18) return 0;
-        uint256 distance = (fallbackSnapshot.healthFactor - 1e18) / 1e14;
-        return distance > type(uint16).max ? type(uint16).max : uint16(distance);
-    }
-
-    function _currentUtilizationBps(bytes32 market) private view returns (uint16) {
-        address adapter = loopRegistry.loopRiskOracleAdapter();
-        if (adapter == address(0)) return 0;
-        (bool ok, bytes memory data) =
-            adapter.staticcall(abi.encodeWithSignature("currentUtilizationBps(bytes32)", market));
-        if (!ok || data.length < 32) return 0;
-        return uint16(abi.decode(data, (uint256)));
-    }
-
-    function _isDebtReducingMode(FlashContext memory context) private pure returns (bool) {
-        if (context.primaryType == uint8(LoopV1Types.PrimaryType.FORCE_EXIT)) return true;
-        if (context.primaryType == uint8(LoopV1Types.PrimaryType.EXIT)) return true;
-        if (context.primaryType == uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC)) return true;
-        return context.primaryType == uint8(LoopV1Types.PrimaryType.REBALANCE) && context.borrowAssets == 0;
+        LoopV1PositionMath.enforceCurveBounds(
+            context.maxSlippageBps,
+            context.maxCurvePositionShareBps,
+            context.withdrawCollateralAssets,
+            diemReceived,
+            loopRegistry.curvePool(context.market)
+        );
     }
 
     function _loanTokenIsToken0(address loanToken, address pairToken) internal pure returns (bool) {
