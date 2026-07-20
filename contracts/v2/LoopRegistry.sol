@@ -4,62 +4,11 @@ pragma solidity ^0.8.24;
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
+import {LoopFingerprintRegistry} from "./LoopFingerprintRegistry.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
 import {LoopV1Types} from "./libraries/LoopV1Types.sol";
-
-interface IMorphoFingerprintReader {
-    function idToMarketParams(bytes32 market)
-        external
-        view
-        returns (address loanToken, address collateralToken, address oracle, address irm, uint256 lltv);
-}
-
-interface IChainlinkFingerprintReader {
-    function aggregator() external view returns (address);
-    function decimals() external view returns (uint8);
-    function latestRoundData()
-        external
-        view
-        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
-}
-
-interface ICurveFingerprintReader {
-    function coins(uint256 i) external view returns (address);
-    function balances(uint256 i) external view returns (uint256);
-    function A() external view returns (uint256);
-    function fee() external view returns (uint256);
-}
-
-interface IERC4626FingerprintReader {
-    function asset() external view returns (address);
-    function decimals() external view returns (uint8);
-    function totalSupply() external view returns (uint256);
-    function totalAssets() external view returns (uint256);
-    function convertToAssets(uint256 shares) external view returns (uint256);
-}
-
-interface IUniswapV3PoolFingerprintReader {
-    function factory() external view returns (address);
-    function token0() external view returns (address);
-    function token1() external view returns (address);
-    function fee() external view returns (uint24);
-    function tickSpacing() external view returns (int24);
-    function liquidity() external view returns (uint128);
-    function slot0()
-        external
-        view
-        returns (
-            uint160 sqrtPriceX96,
-            int24 tick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            uint16 observationCardinalityNext,
-            uint8 feeProtocol,
-            bool unlocked
-        );
-}
 
 /// @notice Phase B registry for digest-bound config, evidence sources, risk metadata, and PR-5 real bodies.
 /// @dev F22 (2026-06-17): Ownable2Step for ownership transfer. Fingerprint updates remain timelocked
@@ -105,22 +54,12 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     uint8 public constant OP_SET_FORCE_EXIT_BUFFER_BPS = 19;
 
     uint256 internal constant REGISTRY_TIMELOCK_BLOCKS = 130_000;
-    uint256 internal constant WAD = 1e18;
-    uint16 internal constant MAX_TOLERANCE_STEP_BPS = 50;
-    uint256 internal constant SEQUENCER_GRACE_SECONDS = 3_600;
 
-    struct PendingFingerprint {
-        LoopV1Types.ExternalProtocolFingerprint fingerprint;
-        uint256 effectiveBlock;
-        FingerprintBaseline baseline;
-    }
-
-    struct FingerprintBaseline {
-        uint256 value0;
-        uint256 value1;
-        int256 signedValue;
-        uint256 updatedAt;
-    }
+    /// @notice Config-integrity fingerprint subsystem (Lock E / I-71), split out under EIP-170. Bound
+    ///         immutably: this core deploys it in its constructor, and it holds `core == this`. All
+    ///         fingerprint storage + validation lives there; this core keeps only the thin
+    ///         `validateExternalConfig` / `navBaseline` forwarders and the timelocked mutating hooks.
+    LoopFingerprintRegistry public immutable fingerprints_;
 
     uint256 public registryVersion;
     bytes32 public registryMerkleRoot;
@@ -147,11 +86,6 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     mapping(bytes32 market => address vault) private wstDiemVaults;
     mapping(bytes32 market => address factory) private uniswapV3Factories;
     mapping(bytes32 market => uint24 feeTier) private uniswapV3FlashFeeTiers;
-    mapping(bytes32 integrationId => LoopV1Types.ExternalProtocolFingerprint fingerprint) private fingerprints;
-    mapping(bytes32 integrationId => PendingFingerprint pending) private pendingFingerprints;
-    mapping(bytes32 integrationId => bytes32 market) private fingerprintMarkets;
-    mapping(bytes32 integrationId => bytes32 sourceId) private fingerprintSources;
-    mapping(bytes32 integrationId => FingerprintBaseline baseline) private fingerprintBaselines;
     mapping(bytes32 market => uint256 blockNumber) private harvestBlocks;
     mapping(address candidate => bool allowed) private operatorRecoveryRoles;
     mapping(address owner => uint256 blockNumber) private ownerActivityBlocks;
@@ -199,6 +133,10 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     PendingBatch private pendingBatch;
 
     constructor(address initialOwner) Ownable(initialOwner) {
+        // Deploy + immutably bind the fingerprint subsystem (S3): `core == this`, and this pairing can
+        // never be re-pointed. The subsystem's runtime bytecode lives at its own address, keeping this
+        // core under EIP-170; only its creation code is embedded in this constructor's initcode.
+        fingerprints_ = new LoopFingerprintRegistry(this);
         harvestCoolingBlocksValue = 30;
         operatorRecoveryNBlocksValue = 1_296_000;
         dustBpsValue = 5;
@@ -494,56 +432,17 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         return requiredEvidenceSources[primaryType];
     }
 
-    function externalFingerprint(bytes32 integrationId)
-        external
-        view
-        returns (LoopV1Types.ExternalProtocolFingerprint memory fingerprint)
-    {
-        return fingerprints[integrationId];
-    }
-
-    function pendingExternalFingerprint(bytes32 integrationId)
-        external
-        view
-        returns (LoopV1Types.ExternalProtocolFingerprint memory fingerprint, uint256 effectiveBlock)
-    {
-        PendingFingerprint storage pending = pendingFingerprints[integrationId];
-        return (pending.fingerprint, pending.effectiveBlock);
-    }
-
-    function queueExternalFingerprintUpdate(
-        bytes32 integrationId,
-        LoopV1Types.ExternalProtocolFingerprint calldata fingerprint
-    ) external onlyOwner {
-        _validateFingerprintShape(integrationId, fingerprint);
-        bytes32 market = fingerprintMarkets[integrationId];
-        bytes32 sourceId = fingerprintSources[integrationId];
-        if (sourceId == bytes32(0)) revert LoopV1Errors.FingerprintInvalid(6);
-        FingerprintBaseline memory baseline = _validateQueuedFingerprint(market, sourceId, fingerprint);
-        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
-        pendingFingerprints[integrationId] = PendingFingerprint(fingerprint, effectiveBlock, baseline);
-        emit ExternalFingerprintUpdateQueued(integrationId, fingerprint.fingerprintHash, effectiveBlock);
-    }
-
-    function applyExternalFingerprintUpdate(bytes32) external {
-        revert LoopV1Errors.ConfigMutationOutsideAtomicGate();
-    }
-
-    function updateExternalFingerprint(bytes32, LoopV1Types.ExternalProtocolFingerprint calldata) external onlyOwner {
-        revert LoopV1Errors.ConfigMutationOutsideAtomicGate();
-    }
-
+    /// @notice I-71 / Lock E config-integrity gate. Thin forwarder into the immutably-bound fingerprint
+    ///         subsystem; stays on the core (hot path: Auth / ForceExitAuthorizer / RiskAdapter /
+    ///         assertProductionReadiness call it via `ILoopRegistry`). Behavior is byte-for-byte
+    ///         identical to the pre-split inline logic.
     function validateExternalConfig(bytes32 market, uint8 primaryType) external view returns (bool valid) {
-        if (!_fingerprintValidationEnabled(market)) return true;
-        bytes32[] memory required = _requiredFingerprintSourceIds(primaryType);
-        for (uint256 i = 0; i < required.length; i++) {
-            _validateConfiguredFingerprint(market, required[i]);
-        }
-        return true;
+        return fingerprints_.validate(this, market, primaryType);
     }
 
+    /// @notice On-chain forwarder retained for `LoopRiskOracleAdapter` (the only on-chain reader).
     function navBaseline(bytes32 market) external view returns (uint256) {
-        return fingerprintBaselines[_integrationId(market, LoopV1Types.SOURCE_VAULT_NAV)].value0;
+        return fingerprints_.navBaseline(market);
     }
 
     function setPreimageDisplayGuaranteedWallet(address wallet, bool allowed) external onlyOwner {
@@ -843,7 +742,7 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
             (bytes32 market, LoopV1Types.MorphoMarketParams memory params) =
                 abi.decode(op.data, (bytes32, LoopV1Types.MorphoMarketParams));
             marketParamStore[market] = params;
-            _rememberFingerprint(market, LoopV1Types.SOURCE_MORPHO_POSITION);
+            fingerprints_.rememberFingerprint(market, LoopV1Types.SOURCE_MORPHO_POSITION);
         } else if (op.op == OP_SET_CANONICAL_SOURCE) {
             (bytes32 market, bytes32 sourceId, address sourceAddress) = abi.decode(op.data, (bytes32, bytes32, address));
             if (!_isCanonicalSource(sourceId)) revert LoopV1Errors.EvidenceSourceUnexpected();
@@ -852,7 +751,7 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
                 sourceId == LoopV1Types.SOURCE_CHAINLINK_FEED || sourceId == LoopV1Types.SOURCE_SEQUENCER_UPTIME
                     || sourceId == LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT
             ) {
-                _rememberFingerprint(market, sourceId);
+                fingerprints_.rememberFingerprint(market, sourceId);
             }
         } else if (op.op == OP_SET_REQUIRED_EVIDENCE_SOURCE_SET) {
             (uint8 primaryType, bytes32[] memory sourceIds) = abi.decode(op.data, (uint8, bytes32[]));
@@ -874,15 +773,15 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
         } else if (op.op == OP_SET_CURVE_POOL) {
             (bytes32 market, address pool) = abi.decode(op.data, (bytes32, address));
             curvePools[market] = pool;
-            _rememberFingerprint(market, LoopV1Types.SOURCE_CURVE_QUOTE);
+            fingerprints_.rememberFingerprint(market, LoopV1Types.SOURCE_CURVE_QUOTE);
         } else if (op.op == OP_SET_UNISWAP_V3_FLASH_POOL) {
             (bytes32 market, address pool) = abi.decode(op.data, (bytes32, address));
             uniswapV3FlashPools[market] = pool;
-            _rememberFingerprint(market, LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT);
+            fingerprints_.rememberFingerprint(market, LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT);
         } else if (op.op == OP_SET_WSTDIEM_VAULT) {
             (bytes32 market, address vault) = abi.decode(op.data, (bytes32, address));
             wstDiemVaults[market] = vault;
-            _rememberFingerprint(market, LoopV1Types.SOURCE_VAULT_NAV);
+            fingerprints_.rememberFingerprint(market, LoopV1Types.SOURCE_VAULT_NAV);
         } else if (op.op == OP_SET_UNISWAP_V3_FACTORY) {
             (bytes32 market, address factory) = abi.decode(op.data, (bytes32, address));
             uniswapV3Factories[market] = factory;
@@ -890,7 +789,7 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
             (bytes32 market, uint24 feeTier) = abi.decode(op.data, (bytes32, uint24));
             uniswapV3FlashFeeTiers[market] = feeTier;
         } else if (op.op == OP_APPLY_EXTERNAL_FINGERPRINT) {
-            _applyExternalFingerprint(abi.decode(op.data, (bytes32)));
+            fingerprints_.applyExternalFingerprint(abi.decode(op.data, (bytes32)));
         } else if (op.op == OP_SET_DUST_BPS) {
             dustBpsValue = abi.decode(op.data, (uint16));
         } else if (op.op == OP_SET_DUST_ABSOLUTE_CAP) {
@@ -952,399 +851,5 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
             || sourceId == LoopV1Types.SOURCE_CHAINLINK_FEED || sourceId == LoopV1Types.SOURCE_CURVE_QUOTE
             || sourceId == LoopV1Types.SOURCE_SEQUENCER_UPTIME || sourceId == LoopV1Types.SOURCE_HARVEST_EVENT
             || sourceId == LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
-    }
-
-    function _integrationId(bytes32 market, bytes32 sourceId) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked("wstdiem.integration", market, sourceId));
-    }
-
-    function _rememberFingerprint(bytes32 market, bytes32 sourceId) private {
-        bytes32 integrationId = _integrationId(market, sourceId);
-        fingerprintMarkets[integrationId] = market;
-        fingerprintSources[integrationId] = sourceId;
-    }
-
-    function _requiredFingerprintSourceIds(uint8 primaryType) private pure returns (bytes32[] memory required) {
-        if (primaryType == uint8(LoopV1Types.PrimaryType.REVOKE)) return new bytes32[](0);
-        if (primaryType == uint8(LoopV1Types.PrimaryType.OPEN)) {
-            required = new bytes32[](5);
-            required[0] = LoopV1Types.SOURCE_MORPHO_POSITION;
-            required[1] = LoopV1Types.SOURCE_VAULT_NAV;
-            required[2] = LoopV1Types.SOURCE_CHAINLINK_FEED;
-            required[3] = LoopV1Types.SOURCE_SEQUENCER_UPTIME;
-            required[4] = LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
-            return required;
-        }
-        required = new bytes32[](6);
-        required[0] = LoopV1Types.SOURCE_MORPHO_POSITION;
-        required[1] = LoopV1Types.SOURCE_VAULT_NAV;
-        required[2] = LoopV1Types.SOURCE_CHAINLINK_FEED;
-        required[3] = LoopV1Types.SOURCE_CURVE_QUOTE;
-        required[4] = LoopV1Types.SOURCE_SEQUENCER_UPTIME;
-        required[5] = LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT;
-        return required;
-    }
-
-    function _validateConfiguredFingerprint(bytes32 market, bytes32 sourceId) private view {
-        address expected = _venueAddress(market, sourceId);
-        if (expected == address(0)) return;
-        bytes32 integrationId = _integrationId(market, sourceId);
-        LoopV1Types.ExternalProtocolFingerprint storage fp = fingerprints[integrationId];
-        if (fp.integrationId == bytes32(0)) revert LoopV1Errors.ConfigIntegrityFailure();
-        if (fp.integration != expected || _fingerprintHash(fp) != fp.fingerprintHash) {
-            revert LoopV1Errors.FingerprintMismatch(1);
-        }
-        (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory current) =
-            _liveFingerprint(market, sourceId, expected, false);
-        if (hard != fp.hardEqualityHash) revert LoopV1Errors.FingerprintMismatch(1);
-        FingerprintBaseline storage baseline = fingerprintBaselines[integrationId];
-        if (!_withinTolerance(sourceId, baseline, current)) revert LoopV1Errors.FingerprintMismatch(2);
-        if (!_liveBaselineFresh(sourceId, live, current)) revert LoopV1Errors.FingerprintMismatch(3);
-        tolerance;
-    }
-
-    function _validateQueuedFingerprint(
-        bytes32 market,
-        bytes32 sourceId,
-        LoopV1Types.ExternalProtocolFingerprint calldata fingerprint
-    ) private view returns (FingerprintBaseline memory baseline) {
-        address expected = _venueAddress(market, sourceId);
-        if (expected == address(0) || fingerprint.integration != expected) revert LoopV1Errors.FingerprintInvalid(2);
-        (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory current) =
-            _liveFingerprint(market, sourceId, expected, true);
-        if (fingerprint.hardEqualityHash != hard) revert LoopV1Errors.FingerprintInvalid(1);
-        if (fingerprint.toleranceBandHash != tolerance) revert LoopV1Errors.FingerprintInvalid(2);
-        if (fingerprint.liveBaselineHash != live) revert LoopV1Errors.FingerprintInvalid(3);
-        return current;
-    }
-
-    function _validateFingerprintShape(
-        bytes32 integrationId,
-        LoopV1Types.ExternalProtocolFingerprint calldata fingerprint
-    ) private pure {
-        if (fingerprint.integrationId != integrationId) {
-            revert LoopV1Errors.FingerprintInvalid(1);
-        }
-        if (fingerprint.integration == address(0)) revert LoopV1Errors.FingerprintInvalid(2);
-        if (fingerprint.liveBaselineHash == bytes32(0)) revert LoopV1Errors.FingerprintInvalid(3);
-        if (_fingerprintHashCalldata(fingerprint) != fingerprint.fingerprintHash) {
-            revert LoopV1Errors.FingerprintInvalid(4);
-        }
-    }
-
-    function _applyExternalFingerprint(bytes32 integrationId) private {
-        PendingFingerprint storage pending = pendingFingerprints[integrationId];
-        if (pending.effectiveBlock == 0) revert LoopV1Errors.FingerprintInvalid(5);
-        if (block.number < pending.effectiveBlock) revert LoopV1Errors.FingerprintTimelockNotElapsed();
-        fingerprints[integrationId] = pending.fingerprint;
-        fingerprintBaselines[integrationId] = pending.baseline;
-        emit ExternalFingerprintUpdateApplied(integrationId, pending.fingerprint.fingerprintHash);
-        emit ReclosedIntegration(integrationId);
-        delete pendingFingerprints[integrationId];
-    }
-
-    function _venueAddress(bytes32 market, bytes32 sourceId) private view returns (address) {
-        if (sourceId == LoopV1Types.SOURCE_MORPHO_POSITION) return morpho;
-        if (sourceId == LoopV1Types.SOURCE_VAULT_NAV) return wstDiemVaults[market];
-        if (sourceId == LoopV1Types.SOURCE_CHAINLINK_FEED) return canonicalSources[market][sourceId];
-        if (sourceId == LoopV1Types.SOURCE_CURVE_QUOTE) return curvePools[market];
-        if (sourceId == LoopV1Types.SOURCE_SEQUENCER_UPTIME) return canonicalSources[market][sourceId];
-        if (sourceId == LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT) {
-            address pool = uniswapV3FlashPools[market];
-            return pool == address(0) ? canonicalSources[market][sourceId] : pool;
-        }
-        return address(0);
-    }
-
-    function _fingerprintValidationEnabled(bytes32 market) private view returns (bool) {
-        return uniswapV3FlashPools[market] != address(0)
-            || canonicalSources[market][LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT] != address(0);
-    }
-
-    function _liveFingerprint(bytes32 market, bytes32 sourceId, address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        if (sourceId == LoopV1Types.SOURCE_MORPHO_POSITION) {
-            return _morphoFingerprint(market, integration, queueing);
-        }
-        if (sourceId == LoopV1Types.SOURCE_VAULT_NAV) return _vaultFingerprint(integration, queueing);
-        if (sourceId == LoopV1Types.SOURCE_CHAINLINK_FEED) return _chainlinkFingerprint(integration, queueing);
-        if (sourceId == LoopV1Types.SOURCE_CURVE_QUOTE) return _curveFingerprint(integration, queueing);
-        if (sourceId == LoopV1Types.SOURCE_SEQUENCER_UPTIME) return _sequencerFingerprint(integration, queueing);
-        if (sourceId == LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT) {
-            return _uniswapFingerprint(market, integration, queueing);
-        }
-        revert LoopV1Errors.FingerprintInvalid(6);
-    }
-
-    function _morphoFingerprint(bytes32 market, address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        try IMorphoFingerprintReader(integration).idToMarketParams(market) returns (
-            address loanToken, address collateralToken, address oracle, address irm, uint256 lltv
-        ) {
-            LoopV1Types.MorphoMarketParams memory stored = marketParamStore[market];
-            if (
-                loanToken != stored.loanToken || collateralToken != stored.collateralToken || oracle != stored.oracle
-                    || irm != stored.irm || lltv != stored.lltv
-            ) {
-                if (queueing) revert LoopV1Errors.FingerprintInvalid(1);
-                revert LoopV1Errors.FingerprintMismatch(1);
-            }
-            hard = keccak256(
-                abi.encode(
-                    "wstdiem.fp.morpho.hard.v1", integration, market, loanToken, collateralToken, oracle, irm, lltv
-                )
-            );
-            tolerance = keccak256(abi.encode("wstdiem.fp.none.v1"));
-            live = keccak256(abi.encode("wstdiem.fp.morpho.live.v1", market));
-            return (hard, tolerance, live, baseline);
-        } catch {
-            if (queueing) revert LoopV1Errors.FingerprintInvalid(1);
-            revert LoopV1Errors.FingerprintMismatch(1);
-        }
-    }
-
-    function _vaultFingerprint(address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        try IERC4626FingerprintReader(integration).asset() returns (address asset_) {
-            try IERC4626FingerprintReader(integration).decimals() returns (uint8 decimals_) {
-                try IERC4626FingerprintReader(integration).totalSupply() returns (uint256 supply) {
-                    try IERC4626FingerprintReader(integration).totalAssets() returns (uint256 assets) {
-                        try IERC4626FingerprintReader(integration).convertToAssets(WAD) returns (uint256 nav) {
-                            if (supply == 0 || assets == 0 || nav == 0) {
-                                if (queueing) revert LoopV1Errors.FingerprintInvalid(2);
-                                revert LoopV1Errors.FingerprintMismatch(2);
-                            }
-                            baseline.value0 = nav;
-                            hard = keccak256(abi.encode("wstdiem.fp.vault.hard.v1", integration, asset_, decimals_));
-                            tolerance =
-                                keccak256(abi.encode("wstdiem.fp.vault.tolerance.v1", nav, MAX_TOLERANCE_STEP_BPS));
-                            live = keccak256(abi.encode("wstdiem.fp.vault.live.v1", supply != 0, assets != 0));
-                            return (hard, tolerance, live, baseline);
-                        } catch {}
-                    } catch {}
-                } catch {}
-            } catch {}
-        } catch {}
-        if (queueing) revert LoopV1Errors.FingerprintInvalid(2);
-        revert LoopV1Errors.FingerprintMismatch(2);
-    }
-
-    function _chainlinkFingerprint(address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        try IChainlinkFingerprintReader(integration).aggregator() returns (address aggregator_) {
-            try IChainlinkFingerprintReader(integration).decimals() returns (uint8 decimals_) {
-                try IChainlinkFingerprintReader(integration).latestRoundData() returns (
-                    uint80 roundId, int256 answer, uint256, uint256 updatedAt, uint80
-                ) {
-                    if (answer <= 0 || updatedAt == 0) {
-                        if (queueing) revert LoopV1Errors.FingerprintInvalid(3);
-                        revert LoopV1Errors.FingerprintMismatch(3);
-                    }
-                    baseline.updatedAt = updatedAt;
-                    uint16 phaseId = uint16(roundId >> 64);
-                    hard = keccak256(
-                        abi.encode("wstdiem.fp.chainlink.hard.v1", integration, aggregator_, decimals_, phaseId)
-                    );
-                    tolerance = keccak256(abi.encode("wstdiem.fp.none.v1"));
-                    live = keccak256(abi.encode("wstdiem.fp.chainlink.live.v1", updatedAt));
-                    return (hard, tolerance, live, baseline);
-                } catch {}
-            } catch {}
-        } catch {}
-        if (queueing) revert LoopV1Errors.FingerprintInvalid(3);
-        revert LoopV1Errors.FingerprintMismatch(3);
-    }
-
-    function _curveFingerprint(address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        try ICurveFingerprintReader(integration).coins(0) returns (address coin0) {
-            try ICurveFingerprintReader(integration).coins(1) returns (address coin1) {
-                try ICurveFingerprintReader(integration).A() returns (uint256 amplification) {
-                    try ICurveFingerprintReader(integration).fee() returns (uint256 fee_) {
-                        try ICurveFingerprintReader(integration).balances(0) returns (uint256 balance0) {
-                            try ICurveFingerprintReader(integration).balances(1) returns (uint256 balance1) {
-                                baseline.value0 = balance0;
-                                baseline.value1 = balance1;
-                                hard = keccak256(
-                                    abi.encode(
-                                        "wstdiem.fp.curve.hard.v1", integration, coin0, coin1, amplification, fee_
-                                    )
-                                );
-                                tolerance = keccak256(
-                                    abi.encode(
-                                        "wstdiem.fp.curve.tolerance.v1", balance0, balance1, MAX_TOLERANCE_STEP_BPS
-                                    )
-                                );
-                                live = keccak256(abi.encode("wstdiem.fp.curve.live.v1", block.number));
-                                return (hard, tolerance, live, baseline);
-                            } catch {}
-                        } catch {}
-                    } catch {}
-                } catch {}
-            } catch {}
-        } catch {}
-        if (queueing) revert LoopV1Errors.FingerprintInvalid(2);
-        revert LoopV1Errors.FingerprintMismatch(2);
-    }
-
-    function _sequencerFingerprint(address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        try IChainlinkFingerprintReader(integration).decimals() returns (uint8 decimals_) {
-            try IChainlinkFingerprintReader(integration).latestRoundData() returns (
-                uint80, int256 answer, uint256 startedAt, uint256, uint80
-            ) {
-                if (answer != 0 || block.timestamp < startedAt + SEQUENCER_GRACE_SECONDS) {
-                    if (queueing) revert LoopV1Errors.FingerprintInvalid(3);
-                    revert LoopV1Errors.FingerprintMismatch(3);
-                }
-                baseline.updatedAt = startedAt;
-                hard = keccak256(abi.encode("wstdiem.fp.sequencer.hard.v1", integration, decimals_));
-                tolerance = keccak256(abi.encode("wstdiem.fp.none.v1"));
-                live = keccak256(abi.encode("wstdiem.fp.sequencer.live.v1", startedAt));
-                return (hard, tolerance, live, baseline);
-            } catch {}
-        } catch {}
-        if (queueing) revert LoopV1Errors.FingerprintInvalid(3);
-        revert LoopV1Errors.FingerprintMismatch(3);
-    }
-
-    function _uniswapFingerprint(bytes32 market, address integration, bool queueing)
-        private
-        view
-        returns (bytes32 hard, bytes32 tolerance, bytes32 live, FingerprintBaseline memory baseline)
-    {
-        try IUniswapV3PoolFingerprintReader(integration).factory() returns (address factory_) {
-            try IUniswapV3PoolFingerprintReader(integration).token0() returns (address token0_) {
-                try IUniswapV3PoolFingerprintReader(integration).token1() returns (address token1_) {
-                    try IUniswapV3PoolFingerprintReader(integration).fee() returns (uint24 fee_) {
-                        try IUniswapV3PoolFingerprintReader(integration).tickSpacing() returns (int24 tickSpacing_) {
-                            try IUniswapV3PoolFingerprintReader(integration).liquidity() returns (uint128 liquidity_) {
-                                try IUniswapV3PoolFingerprintReader(integration).slot0() returns (
-                                    uint160, int24 tick, uint16, uint16, uint16, uint8, bool
-                                ) {
-                                    if (
-                                        factory_ != uniswapV3Factories[market] || fee_ != uniswapV3FlashFeeTiers[market]
-                                    ) {
-                                        if (queueing) revert LoopV1Errors.FingerprintInvalid(1);
-                                        revert LoopV1Errors.FingerprintMismatch(1);
-                                    }
-                                    baseline.value0 = uint256(liquidity_);
-                                    baseline.signedValue = tick;
-                                    hard = keccak256(
-                                        abi.encode(
-                                            "wstdiem.fp.uniswap.hard.v1",
-                                            integration,
-                                            factory_,
-                                            token0_,
-                                            token1_,
-                                            fee_,
-                                            tickSpacing_
-                                        )
-                                    );
-                                    tolerance = keccak256(
-                                        abi.encode(
-                                            "wstdiem.fp.uniswap.tolerance.v1", liquidity_, MAX_TOLERANCE_STEP_BPS
-                                        )
-                                    );
-                                    live = keccak256(abi.encode("wstdiem.fp.uniswap.live.v1", tick));
-                                    return (hard, tolerance, live, baseline);
-                                } catch {}
-                            } catch {}
-                        } catch {}
-                    } catch {}
-                } catch {}
-            } catch {}
-        } catch {}
-        if (queueing) revert LoopV1Errors.FingerprintInvalid(1);
-        revert LoopV1Errors.FingerprintMismatch(1);
-    }
-
-    function _withinTolerance(
-        bytes32 sourceId,
-        FingerprintBaseline storage baseline,
-        FingerprintBaseline memory current
-    ) private view returns (bool) {
-        if (sourceId == LoopV1Types.SOURCE_VAULT_NAV || sourceId == LoopV1Types.SOURCE_EXTERNAL_PROTOCOL_FINGERPRINT) {
-            return _withinBps(baseline.value0, current.value0, MAX_TOLERANCE_STEP_BPS);
-        }
-        if (sourceId == LoopV1Types.SOURCE_CURVE_QUOTE) {
-            return _withinBps(baseline.value0, current.value0, MAX_TOLERANCE_STEP_BPS)
-                && _withinBps(baseline.value1, current.value1, MAX_TOLERANCE_STEP_BPS);
-        }
-        return true;
-    }
-
-    function _withinBps(uint256 baseline, uint256 current, uint16 bps) private pure returns (bool) {
-        if (baseline == 0) return current == 0;
-        uint256 delta = baseline > current ? baseline - current : current - baseline;
-        return delta * 10_000 <= baseline * bps;
-    }
-
-    function _liveBaselineFresh(bytes32 sourceId, bytes32 liveHash, FingerprintBaseline memory current)
-        private
-        view
-        returns (bool)
-    {
-        liveHash;
-        if (sourceId == LoopV1Types.SOURCE_CHAINLINK_FEED) {
-            uint256 threshold = freshnessThresholds[sourceId];
-            return threshold == 0 || block.timestamp <= current.updatedAt + threshold;
-        }
-        if (sourceId == LoopV1Types.SOURCE_SEQUENCER_UPTIME) {
-            return block.timestamp >= current.updatedAt + SEQUENCER_GRACE_SECONDS;
-        }
-        return true;
-    }
-
-    function _fingerprintHash(LoopV1Types.ExternalProtocolFingerprint storage fingerprint)
-        private
-        view
-        returns (bytes32)
-    {
-        return keccak256(
-            abi.encode(
-                fingerprint.integrationId,
-                fingerprint.integration,
-                fingerprint.hardEqualityHash,
-                fingerprint.toleranceBandHash,
-                fingerprint.liveBaselineHash,
-                fingerprint.registryVersion
-            )
-        );
-    }
-
-    function _fingerprintHashCalldata(LoopV1Types.ExternalProtocolFingerprint calldata fingerprint)
-        private
-        pure
-        returns (bytes32)
-    {
-        return keccak256(
-            abi.encode(
-                fingerprint.integrationId,
-                fingerprint.integration,
-                fingerprint.hardEqualityHash,
-                fingerprint.toleranceBandHash,
-                fingerprint.liveBaselineHash,
-                fingerprint.registryVersion
-            )
-        );
     }
 }

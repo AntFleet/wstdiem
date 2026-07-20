@@ -324,7 +324,13 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     this.readClient = this.rpcQuorum
       ? this.rpcQuorum.asPublicClient()
       : config.publicClient;
-    this.registry = new RegistryReader(this.readClient, config.contracts.loopRegistry);
+    this.registry = new RegistryReader(
+      this.readClient,
+      config.contracts.loopRegistry,
+      // EIP-170 Phase 3: route externalFingerprint reads to the split-out
+      // LoopFingerprintRegistry; fall back to the core registry pre-split.
+      config.contracts.loopFingerprintRegistry ?? config.contracts.loopRegistry,
+    );
     // When no evidenceResolver is supplied:
     //   - preferPlaceholderEvidence → lightweight FRESH placeholders (tests)
     //   - otherwise live venue resolver (D-4 richer values); on RPC failure
@@ -3109,6 +3115,9 @@ function freezeContracts(c: SdkContractAddresses): SdkContractAddresses {
     loopRiskOracleAdapter: c.loopRiskOracleAdapter,
     loopFeeRouter: c.loopFeeRouter,
     emergencyGuardian: c.emergencyGuardian,
+    ...(c.loopFingerprintRegistry !== undefined
+      ? { loopFingerprintRegistry: c.loopFingerprintRegistry }
+      : {}),
   });
 }
 

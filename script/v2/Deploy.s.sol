@@ -83,6 +83,7 @@ contract Deploy is Script {
         console2.log("WSTDIEM Phase 1 deployment hash");
         console2.logBytes32(deploymentHash);
         console2.log("registry", deployed.registry);
+        console2.log("fingerprintRegistry (SDK loopFingerprintRegistry)", address(registry.fingerprints_()));
         console2.log("forceExitAuthorizer", deployed.forceExitAuthorizer);
         console2.log("authorization", deployed.authorization);
         console2.log("executorV2", deployed.executorV2);
