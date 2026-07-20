@@ -47,7 +47,11 @@ export function buildIndexer(args: BuildArgs): IndexerHandle {
     roleRotations,
   };
 
-  const contractAddresses = Object.values(config.contracts).map((a) => a as Hex);
+  // EIP-170 Phase 3: `contracts.fingerprintRegistry` is optional; drop any
+  // undefined entry so the RPC log filter never receives a bad address.
+  const contractAddresses = Object.values(config.contracts)
+    .filter((a): a is string => typeof a === "string")
+    .map((a) => a as Hex);
 
   let stopped = false;
   let pollHandle: NodeJS.Timeout | null = null;

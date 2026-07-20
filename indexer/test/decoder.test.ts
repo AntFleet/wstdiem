@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { encodeEventTopics, encodeAbiParameters, keccak256, toHex, type Log } from "viem";
 import { decodeLog } from "../src/events/decoder.js";
-import { STATE_SNAPSHOT_ACCEPTED, REGISTRY_EMERGENCY_GUARDIAN_CHANGED } from "../src/events/abi.js";
+import {
+  STATE_SNAPSHOT_ACCEPTED,
+  REGISTRY_EMERGENCY_GUARDIAN_CHANGED,
+  EXTERNAL_FINGERPRINT_UPDATE_QUEUED,
+} from "../src/events/abi.js";
 
 function buildLog(args: {
   abi: typeof STATE_SNAPSHOT_ACCEPTED;
@@ -50,6 +54,25 @@ describe("decodeLog", () => {
     const log = buildLog({ abi: REGISTRY_EMERGENCY_GUARDIAN_CHANGED, topics, data });
     const decoded = decodeLog(log);
     expect(decoded?.eventName).toBe("RegistryEmergencyGuardianChanged");
+    expect((decoded?.args as Record<string, unknown>).effectiveBlock).toBe(effectiveBlock);
+  });
+
+  it("decodes ExternalFingerprintUpdateQueued (EIP-170 Phase 3 split contract)", () => {
+    const integrationId = ("0x1c".padEnd(66, "0")) as `0x${string}`;
+    const fingerprintHash = ("0x2d".padEnd(66, "0")) as `0x${string}`;
+    const effectiveBlock = 1_500_100n;
+    const topics = encodeEventTopics({
+      abi: [EXTERNAL_FINGERPRINT_UPDATE_QUEUED],
+      args: { integrationId },
+    }) as `0x${string}`[];
+    const data = encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "uint256" }],
+      [fingerprintHash, effectiveBlock],
+    ) as `0x${string}`;
+    const log = buildLog({ abi: EXTERNAL_FINGERPRINT_UPDATE_QUEUED, topics, data });
+    const decoded = decodeLog(log);
+    expect(decoded?.eventName).toBe("ExternalFingerprintUpdateQueued");
+    expect((decoded?.args as Record<string, unknown>).integrationId).toBe(integrationId);
     expect((decoded?.args as Record<string, unknown>).effectiveBlock).toBe(effectiveBlock);
   });
 

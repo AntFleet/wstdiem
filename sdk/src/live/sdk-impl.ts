@@ -1179,6 +1179,14 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       ["registry", new Set([lc(c.loopRegistry)])],
       ["anchor", new Set([lc(c.loopAnchorRegistry)])],
     ]);
+    // EIP-170 Phase 3: fingerprint events (ExternalFingerprintUpdateQueued /
+    // ...Applied / ReclosedIntegration) now emit from the split-out
+    // LoopFingerprintRegistry. It's optional in config (absent on pre-split
+    // deployments); only trust it when actually configured so we never add
+    // `undefined` to the allowlist.
+    if (c.loopFingerprintRegistry) {
+      map.set("fingerprintRegistry", new Set([lc(c.loopFingerprintRegistry)]));
+    }
     this._knownEmittersCache = map;
     return map;
   }

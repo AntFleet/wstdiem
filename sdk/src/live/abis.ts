@@ -689,6 +689,33 @@ export const LOOP_EVENTS_FULL_ABI = [
       { name: "submitter", type: "address", indexed: true },
     ],
   },
+  // EIP-170 Phase 3: the fingerprint subsystem was split out into
+  // contracts/v2/LoopFingerprintRegistry.sol. These three events now emit from
+  // that split contract (address = config.contracts.loopFingerprintRegistry)
+  // rather than the core registry. Signatures match
+  // contracts/v2/interfaces/ILoopV1Events.sol:139-147 verbatim.
+  {
+    type: "event",
+    name: "ExternalFingerprintUpdateQueued",
+    inputs: [
+      { name: "integrationId", type: "bytes32", indexed: true },
+      { name: "fingerprintHash", type: "bytes32", indexed: false },
+      { name: "effectiveBlock", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ExternalFingerprintUpdateApplied",
+    inputs: [
+      { name: "integrationId", type: "bytes32", indexed: true },
+      { name: "fingerprintHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ReclosedIntegration",
+    inputs: [{ name: "integrationId", type: "bytes32", indexed: true }],
+  },
 ] as const satisfies Abi;
 
 /**

@@ -35,6 +35,10 @@ export const IndexerConfigSchema = z.object({
     anchorRegistry: hexAddress,
     feeRouter: hexAddress,
     emergencyGuardian: hexAddress,
+    // EIP-170 Phase 3: split-out LoopFingerprintRegistry. Optional so pre-split
+    // deployments (fingerprint events still on the core registry) keep loading.
+    // When set, its logs are subscribed to and its fingerprint events decode.
+    fingerprintRegistry: hexAddress.optional(),
   }),
   logLevel: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
@@ -67,6 +71,7 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Indexer
       anchorRegistry: env.WSTDIEM_ANCHOR_REGISTRY_ADDRESS,
       feeRouter: env.WSTDIEM_FEE_ROUTER_ADDRESS,
       emergencyGuardian: env.WSTDIEM_EMERGENCY_GUARDIAN_ADDRESS,
+      fingerprintRegistry: env.WSTDIEM_FINGERPRINT_REGISTRY_ADDRESS || undefined,
     },
   });
 }

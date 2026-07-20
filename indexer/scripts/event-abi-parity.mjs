@@ -127,6 +127,25 @@ const INDEXER_EVENTS = [
       { type: "address", indexed: true },
     ],
   },
+  {
+    name: "ExternalFingerprintUpdateQueued",
+    inputs: [
+      { type: "bytes32", indexed: true },
+      { type: "bytes32", indexed: false },
+      { type: "uint256", indexed: false },
+    ],
+  },
+  {
+    name: "ExternalFingerprintUpdateApplied",
+    inputs: [
+      { type: "bytes32", indexed: true },
+      { type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    name: "ReclosedIntegration",
+    inputs: [{ type: "bytes32", indexed: true }],
+  },
 ];
 
 const CONTRACTS = [
@@ -134,6 +153,8 @@ const CONTRACTS = [
   "LoopAuthorization",
   "LoopAnchorRegistry",
   "EmergencyGuardian",
+  // EIP-170 Phase 3: fingerprint events split out to this contract's artifact.
+  "LoopFingerprintRegistry",
 ];
 
 function findArtifact(name) {
