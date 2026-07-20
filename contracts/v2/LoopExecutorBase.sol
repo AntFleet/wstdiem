@@ -8,6 +8,7 @@ import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
 import {LoopV1EIP712} from "./libraries/LoopV1EIP712.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
 import {LoopV1PositionMath} from "./libraries/LoopV1PositionMath.sol";
+import {LoopV1TokenApproval} from "./libraries/LoopV1TokenApproval.sol";
 import {LoopV1Types} from "./libraries/LoopV1Types.sol";
 
 interface IERC20Minimal {
@@ -245,30 +246,9 @@ abstract contract LoopExecutorBase is ILoopV1Events {
     /// @dev Callers MUST pass the live action `primaryType`. The legacy 3-arg overload that
     ///      skipped the check via `type(uint8).max` was removed — no production path may bypass.
     function _approveExact(address token, address spender, uint256 amount, uint8 primaryType) internal {
-        _requireAllowedSpender(primaryType, token, spender);
+        LoopV1TokenApproval.requireAllowedSpender(loopRegistry, primaryType, token, spender);
         _safeApprove(token, spender, 0);
         _safeApprove(token, spender, amount);
-    }
-
-    function _requireAllowedSpender(uint8 primaryType, address token, address spender) internal view {
-        if (spender == address(0)) revert LoopV1Errors.SpenderNotRegistered();
-        ILoopRegistry.SpenderCheck memory check = loopRegistry.allowedSpender(primaryType, token, spender);
-        // D-3: enforced flag OR post-bootstrap always requires a registered row.
-        // Pre-bootstrap unit harnesses may leave the flag false and omit rows.
-        if (check.spender == address(0)) {
-            if (loopRegistry.spendAllowlistEnforced() || loopRegistry.bootstrapClosed()) {
-                revert LoopV1Errors.SpenderNotRegistered();
-            }
-            return;
-        }
-        if (check.spender != spender) revert LoopV1Errors.SpenderNotRegistered();
-        if (check.runtimeCodeHash != bytes32(0)) {
-            bytes32 codehash;
-            assembly {
-                codehash := extcodehash(spender)
-            }
-            if (codehash != check.runtimeCodeHash) revert LoopV1Errors.BytecodeMismatch();
-        }
     }
 
     function _safeApprove(address token, address spender, uint256 amount) internal {
