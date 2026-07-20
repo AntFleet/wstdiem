@@ -19,17 +19,34 @@ open-loop path is wired end-to-end and proven against mock protocols locally; wh
 is the on-chain broadcast (needs your key/RPC), pointing envs at deployed addresses, and a
 Playwright e2e pass against the live deployment.
 
-> ⚠️ **This summary is superseded by the P0 blocker below (2026-07-18).** A fresh redeploy
-> is currently **impossible** — three core contracts exceed the EIP-170 size limit. See
-> "🚨 P0 LAUNCH BLOCKER" immediately below.
+> ✅ **RESOLVED 2026-07-20 (PR #9/#10/#11).** All four core contracts are now under the
+> EIP-170 ceiling and `forge build --sizes` exits 0 — the protocol is deployable again. The
+> redeploy (#3 Phase B/C) is unblocked. Historical detail retained below.
 
 ---
 
-## 🚨 P0 LAUNCH BLOCKER (2026-07-18): core contracts exceed EIP-170 size limit
+## ✅ P0 LAUNCH BLOCKER (2026-07-18 → RESOLVED 2026-07-20): core contracts exceeded EIP-170
 
-**The protocol cannot be deployed as it stands on `main`.** A fresh Base Sepolia redeploy
-(Phase B of the EIP-712 canonicalization work) failed at broadcast: three CORE contracts
-exceed the hard 24,576-byte EIP-170 runtime code-size limit.
+**RESOLVED** via a 3-phase structural refactor (issue #7). A fresh Base Sepolia redeploy
+(Phase B of the EIP-712 canonicalization work) had failed at broadcast: three CORE contracts
+exceeded the hard 24,576-byte EIP-170 runtime code-size limit.
+
+| Contract | Was (over by) | Now | Headroom |
+|---|---|---|---|
+| `LoopRegistry.sol` | 29,398 (**+4,822**) | 17,363 | 7,213 |
+| `LoopFingerprintRegistry.sol` | — (split-out) | 14,882 | 9,694 |
+| `LoopAuthorization.sol` | 25,722 (+1,146) | 23,648 | 928 |
+| `LoopExecutorV2.sol` | 25,556 (+980) | 23,209 | 1,367 |
+
+**Fix (all merged to `main`):** Phase 1 (PR #9) extracted position/health math →
+`LoopV1PositionMath` + `LoopV1MorphoCalldata` internal→public. Phase 2 (PR #10)
+`SignatureCheckerLib`→public + `LoopV1ActionContext` transient-context lib + dead-code
+removal. Phase 3 (PR #11) split the fingerprint subsystem into a new `LoopFingerprintRegistry`
+contract (core keeps the `ILoopRegistry` ABI + thin forwarders; SDK/indexer rewired to the new
+emitter address). EIP-712 digests provably unaffected (wallet-parity oracle green); each phase
+3-lane codex-audited to 0 C/H/M.
+
+<details><summary>Original blocker detail (2026-07-18)</summary>
 
 | Contract | Size (runs=200, via_ir) | Over by |
 |---|---|---|
@@ -65,8 +82,10 @@ exceed the hard 24,576-byte EIP-170 runtime code-size limit.
 - Effort ≈ 3–6 days total. Config-only fix confirmed insufficient (optimizer_runs=1 still fails).
 
 **Impact on the EIP-712 redeploy (#3):** Phase A (canonical digests) is MERGED. Phase B
-(redeploy) and Phase C (live signTypedData smoke) are **paused behind this blocker** — the
-redeploy cannot happen until the contracts fit under EIP-170.
+(redeploy) and Phase C (live signTypedData smoke) were **paused behind this blocker** — now
+**unblocked** as of 2026-07-20; ready to resume.
+
+</details>
 
 ---
 
