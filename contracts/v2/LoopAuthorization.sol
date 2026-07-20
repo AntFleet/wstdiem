@@ -5,6 +5,7 @@ import {ILoopAuthorization} from "./interfaces/ILoopAuthorization.sol";
 import {ILoopForceExitAuthorizer} from "./interfaces/ILoopForceExitAuthorizer.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
+import {LoopV1ActionContext} from "./libraries/LoopV1ActionContext.sol";
 import {LoopV1ActionValidation} from "./libraries/LoopV1ActionValidation.sol";
 import {LoopV1EIP712} from "./libraries/LoopV1EIP712.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
@@ -29,23 +30,6 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
     uint8 internal constant POLICY_REPAY_ONLY = 3;
     uint8 internal constant POLICY_DELEVERAGE_ONLY = 4;
     uint8 internal constant POLICY_FORCE_EXIT = 5;
-
-    bytes32 private constant CONTEXT_DIGEST_SLOT = keccak256("wstdiem.tx.action.digest");
-    bytes32 private constant CONTEXT_OWNER_SLOT = keccak256("wstdiem.tx.action.owner");
-    bytes32 private constant CONTEXT_MARKET_SLOT = keccak256("wstdiem.tx.action.market");
-    bytes32 private constant CONTEXT_EXECUTOR_SLOT = keccak256("wstdiem.tx.action.executor");
-    bytes32 private constant CONTEXT_POLICY_ID_SLOT = keccak256("wstdiem.tx.action.policyId");
-    bytes32 private constant CONTEXT_PRIMARY_TYPE_SLOT = keccak256("wstdiem.tx.action.primaryType");
-    bytes32 private constant CONTEXT_POLICY_CLASS_SLOT = keccak256("wstdiem.tx.action.policyClass");
-    bytes32 private constant CONTEXT_NONCE_SLOT_SLOT = keccak256("wstdiem.tx.action.nonceSlot");
-    bytes32 private constant CONTEXT_NONCE_BIT_SLOT = keccak256("wstdiem.tx.action.nonceBit");
-    bytes32 private constant CONTEXT_STEP_SLOT = keccak256("wstdiem.tx.action.step");
-    bytes32 private constant CONTEXT_TERMINAL_SELECTOR_SLOT = keccak256("wstdiem.tx.action.terminalSelector");
-    bytes32 private constant CONTEXT_MIN_BORROW_SLOT = keccak256("wstdiem.tx.action.minBorrow");
-    bytes32 private constant CONTEXT_MAX_BORROW_SLOT = keccak256("wstdiem.tx.action.maxBorrow");
-    bytes32 private constant CONTEXT_MIN_REPAY_SLOT = keccak256("wstdiem.tx.action.minRepay");
-    bytes32 private constant CONTEXT_MAX_COLLATERAL_SLOT = keccak256("wstdiem.tx.action.maxCollateral");
-    bytes32 private constant CONTEXT_MAX_DEBT_INCREASE_SLOT = keccak256("wstdiem.tx.action.maxDebtIncrease");
 
     ILoopRegistry public immutable registry;
     bytes32 public immutable domainSeparator;
@@ -94,25 +78,25 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         returns (bytes memory morphoReturnData)
     {
         _enterReentryGuard();
-        bytes32 contextDigest = _tload(CONTEXT_DIGEST_SLOT);
+        bytes32 contextDigest = _tload(LoopV1ActionContext.CONTEXT_DIGEST_SLOT);
         if (contextDigest == bytes32(0)) revert LoopV1Errors.ActionContextMissing();
         if (contextDigest != digest) revert LoopV1Errors.ActionContextDigestMismatch();
 
-        address owner = address(uint160(uint256(_tload(CONTEXT_OWNER_SLOT))));
         sig;
 
-        uint8 primaryType = uint8(uint256(_tload(CONTEXT_PRIMARY_TYPE_SLOT)));
-        if (msg.sender != address(uint160(uint256(_tload(CONTEXT_EXECUTOR_SLOT))))) {
+        LoopV1MorphoValidation.Context memory morphoContext = LoopV1ActionContext.morphoContext();
+        address owner = morphoContext.owner;
+        uint8 primaryType = morphoContext.primaryType;
+        if (msg.sender != morphoContext.executor) {
             revert LoopV1Errors.ExecutorMismatch();
         }
 
-        LoopV1MorphoValidation.Context memory morphoContext = _morphoContext(owner, primaryType);
         (bytes4 selector, address tokenIn, uint256 tokenAmount) =
             LoopV1MorphoValidation.validate(registry, morphoCalldata, morphoContext);
 
         address morpho = registry.morpho();
-        bool terminal = selector == bytes4(_tload(CONTEXT_TERMINAL_SELECTOR_SLOT));
-        uint256 stepIndex = uint256(_tload(CONTEXT_STEP_SLOT));
+        bool terminal = selector == morphoContext.terminalSelector;
+        uint256 stepIndex = morphoContext.step;
         emit LoopActionStep(
             owner, morphoContext.market, digest, uint8(stepIndex), primaryType, morpho, selector, terminal
         );
@@ -120,17 +104,9 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             // NF-8 activity records only terminal Morpho actions. If the terminal call reverts,
             // the nonce/activity writes revert too; Revoke has no Morpho terminal and remains
             // recoverable by the existing activity-absence predicate without extra bytecode.
-            _consumeNonce(
-                owner,
-                uint64(uint256(_tload(CONTEXT_POLICY_ID_SLOT))),
-                primaryType,
-                uint248(uint256(_tload(CONTEXT_NONCE_SLOT_SLOT))),
-                uint8(uint256(_tload(CONTEXT_NONCE_BIT_SLOT)))
-            );
-            ownerLastSignedActionBlock[owner] = block.number;
-            registry.recordOwnerActivity(owner);
+            _consumeTerminalNonce(owner, primaryType);
         } else {
-            _tstore(CONTEXT_STEP_SLOT, bytes32(uint256(_tload(CONTEXT_STEP_SLOT)) + 1));
+            _tstore(LoopV1ActionContext.CONTEXT_STEP_SLOT, bytes32(morphoContext.step + 1));
         }
 
         if (tokenIn != address(0) && tokenAmount != 0) {
@@ -146,7 +122,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             }
         }
         if (terminal) {
-            _clearContext();
+            LoopV1ActionContext.clearContext();
         }
         _exitReentryGuard();
         return data;
@@ -178,12 +154,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         );
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
         LoopV1ActionValidation.validateLiveStateBitmap(
-            registry,
-            action.identity.market,
-            action.identity.owner,
-            uint8(LoopV1Types.PrimaryType.OPEN),
-            1,
-            0
+            registry, action.identity.market, action.identity.owner, uint8(LoopV1Types.PrimaryType.OPEN), 1, 0
         );
         _requireHighRisk(
             action.identity.owner,
@@ -200,7 +171,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             action.freshness.deadline,
             eip1271PreimageDisplayProof
         );
-        _armContext(
+        LoopV1ActionContext.armContext(
             digest,
             action.identity,
             uint8(LoopV1Types.PrimaryType.OPEN),
@@ -275,7 +246,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         bytes4 terminal = debtIncrease
             ? MorphoSelectors.BORROW
             : (collateralSold ? MorphoSelectors.WITHDRAW_COLLATERAL : MorphoSelectors.REPAY);
-        _armContext(
+        LoopV1ActionContext.armContext(
             digest,
             action.identity,
             uint8(LoopV1Types.PrimaryType.REBALANCE),
@@ -317,7 +288,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             msg.sender
         );
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
-        _armContext(
+        LoopV1ActionContext.armContext(
             digest,
             action.identity,
             uint8(LoopV1Types.PrimaryType.EXIT),
@@ -367,7 +338,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         }
         eip1271PreimageDisplayProof;
         bytes4 terminal = policyClass == POLICY_REPAY_ONLY ? MorphoSelectors.REPAY : MorphoSelectors.WITHDRAW_COLLATERAL;
-        _armContext(
+        LoopV1ActionContext.armContext(
             digest,
             action.identity,
             uint8(LoopV1Types.PrimaryType.AUTOMATION_EXEC),
@@ -409,7 +380,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             executionCaller,
             ownerLastSignedActionBlock[action.identity.owner]
         );
-        _armContext(
+        LoopV1ActionContext.armContext(
             digest,
             action.identity,
             uint8(LoopV1Types.PrimaryType.FORCE_EXIT),
@@ -709,76 +680,22 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
         if (!attested) revert LoopV1Errors.Eip1271PreimageNotAttested();
     }
 
-    function _morphoContext(address owner, uint8 primaryType)
-        private
-        view
-        returns (LoopV1MorphoValidation.Context memory context)
-    {
-        context.owner = owner;
-        context.executor = address(uint160(uint256(_tload(CONTEXT_EXECUTOR_SLOT))));
-        context.market = _tload(CONTEXT_MARKET_SLOT);
-        context.primaryType = primaryType;
-        context.step = uint256(_tload(CONTEXT_STEP_SLOT));
-        context.terminalSelector = bytes4(_tload(CONTEXT_TERMINAL_SELECTOR_SLOT));
-        context.minBorrow = uint256(_tload(CONTEXT_MIN_BORROW_SLOT));
-        context.maxBorrow = uint256(_tload(CONTEXT_MAX_BORROW_SLOT));
-        context.minRepay = uint256(_tload(CONTEXT_MIN_REPAY_SLOT));
-        context.maxCollateral = uint256(_tload(CONTEXT_MAX_COLLATERAL_SLOT));
-        context.maxDebtIncrease = uint256(_tload(CONTEXT_MAX_DEBT_INCREASE_SLOT));
-    }
-
-    function _armContext(
-        bytes32 digest,
-        LoopV1EIP712.ActionIdentity calldata identity,
-        uint8 primaryType,
-        uint8 policyClass,
-        bytes4 terminalSelector,
-        uint256 minBorrow,
-        uint256 maxBorrow,
-        uint256 minRepay,
-        uint256 maxCollateral,
-        uint256 maxDebtIncrease
-    ) private {
-        _tstore(CONTEXT_DIGEST_SLOT, digest);
-        _tstore(CONTEXT_OWNER_SLOT, bytes32(uint256(uint160(identity.owner))));
-        _tstore(CONTEXT_MARKET_SLOT, identity.market);
-        _tstore(CONTEXT_EXECUTOR_SLOT, bytes32(uint256(uint160(identity.executor))));
-        _tstore(CONTEXT_POLICY_ID_SLOT, bytes32(uint256(identity.policyId)));
-        _tstore(CONTEXT_PRIMARY_TYPE_SLOT, bytes32(uint256(primaryType)));
-        _tstore(CONTEXT_POLICY_CLASS_SLOT, bytes32(uint256(policyClass)));
-        _tstore(CONTEXT_NONCE_SLOT_SLOT, bytes32(uint256(identity.nonceSlot)));
-        _tstore(CONTEXT_NONCE_BIT_SLOT, bytes32(uint256(identity.nonceBit)));
-        _tstore(CONTEXT_STEP_SLOT, bytes32(0));
-        _tstore(CONTEXT_TERMINAL_SELECTOR_SLOT, bytes32(terminalSelector));
-        _tstore(CONTEXT_MIN_BORROW_SLOT, bytes32(minBorrow));
-        _tstore(CONTEXT_MAX_BORROW_SLOT, bytes32(maxBorrow));
-        _tstore(CONTEXT_MIN_REPAY_SLOT, bytes32(minRepay));
-        _tstore(CONTEXT_MAX_COLLATERAL_SLOT, bytes32(maxCollateral));
-        _tstore(CONTEXT_MAX_DEBT_INCREASE_SLOT, bytes32(maxDebtIncrease));
-        emit LoopActionStarted(digest, primaryType, identity.owner, identity.market, block.number);
-    }
-
-    function _clearContext() private {
-        _tstore(CONTEXT_DIGEST_SLOT, bytes32(0));
-        _tstore(CONTEXT_OWNER_SLOT, bytes32(0));
-        _tstore(CONTEXT_MARKET_SLOT, bytes32(0));
-        _tstore(CONTEXT_EXECUTOR_SLOT, bytes32(0));
-        _tstore(CONTEXT_POLICY_ID_SLOT, bytes32(0));
-        _tstore(CONTEXT_PRIMARY_TYPE_SLOT, bytes32(0));
-        _tstore(CONTEXT_POLICY_CLASS_SLOT, bytes32(0));
-        _tstore(CONTEXT_NONCE_SLOT_SLOT, bytes32(0));
-        _tstore(CONTEXT_NONCE_BIT_SLOT, bytes32(0));
-        _tstore(CONTEXT_STEP_SLOT, bytes32(0));
-        _tstore(CONTEXT_TERMINAL_SELECTOR_SLOT, bytes32(0));
-        _tstore(CONTEXT_MIN_BORROW_SLOT, bytes32(0));
-        _tstore(CONTEXT_MAX_BORROW_SLOT, bytes32(0));
-        _tstore(CONTEXT_MIN_REPAY_SLOT, bytes32(0));
-        _tstore(CONTEXT_MAX_COLLATERAL_SLOT, bytes32(0));
-        _tstore(CONTEXT_MAX_DEBT_INCREASE_SLOT, bytes32(0));
-    }
-
     function _contextClear() private view returns (bool) {
-        return _tload(CONTEXT_DIGEST_SLOT) == bytes32(0);
+        return _tload(LoopV1ActionContext.CONTEXT_DIGEST_SLOT) == bytes32(0);
+    }
+
+    /// @dev NF-8 terminal-step nonce consumption + owner activity. Extracted from executeMorpho so
+    ///      the three transient nonce reads do not add to that function's via-IR stack budget.
+    function _consumeTerminalNonce(address owner, uint8 primaryType) private {
+        _consumeNonce(
+            owner,
+            uint64(uint256(_tload(LoopV1ActionContext.CONTEXT_POLICY_ID_SLOT))),
+            primaryType,
+            uint248(uint256(_tload(LoopV1ActionContext.CONTEXT_NONCE_SLOT_SLOT))),
+            uint8(uint256(_tload(LoopV1ActionContext.CONTEXT_NONCE_BIT_SLOT)))
+        );
+        ownerLastSignedActionBlock[owner] = block.number;
+        registry.recordOwnerActivity(owner);
     }
 
     function _consumeNonce(address owner, uint64 policyId, uint8 primaryType, uint248 nonceSlot, uint8 nonceBit)
@@ -833,13 +750,6 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
     function _tstore(bytes32 slot, bytes32 value) private {
         assembly {
             tstore(slot, value)
-        }
-    }
-
-    function _selectorOf(bytes calldata data) private pure returns (bytes4 selector) {
-        if (data.length < 4) revert LoopV1Errors.MorphoSelectorForbidden();
-        assembly {
-            selector := calldataload(data.offset)
         }
     }
 
