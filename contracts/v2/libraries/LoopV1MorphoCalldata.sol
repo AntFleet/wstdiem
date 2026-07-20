@@ -7,7 +7,7 @@ import {MorphoSelectors} from "./MorphoSelectors.sol";
 /// @notice Canonical single-call Morpho calldata encoders accepted by LoopAuthorization.
 library LoopV1MorphoCalldata {
     function supplyCollateral(LoopV1Types.MorphoMarketParams memory params, uint256 assets, address owner)
-        internal
+        public
         pure
         returns (bytes memory)
     {
@@ -15,7 +15,7 @@ library LoopV1MorphoCalldata {
     }
 
     function borrow(LoopV1Types.MorphoMarketParams memory params, uint256 assets, address owner, address executor)
-        internal
+        public
         pure
         returns (bytes memory)
     {
@@ -23,7 +23,7 @@ library LoopV1MorphoCalldata {
     }
 
     function repay(LoopV1Types.MorphoMarketParams memory params, uint256 assets, address owner)
-        internal
+        public
         pure
         returns (bytes memory)
     {
@@ -35,7 +35,7 @@ library LoopV1MorphoCalldata {
         uint256 assets,
         address owner,
         address executor
-    ) internal pure returns (bytes memory) {
+    ) public pure returns (bytes memory) {
         return abi.encodeWithSelector(MorphoSelectors.WITHDRAW_COLLATERAL, params, assets, owner, executor);
     }
 }
