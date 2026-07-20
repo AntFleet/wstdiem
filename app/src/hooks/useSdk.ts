@@ -143,6 +143,15 @@ function buildSdkConfig(): {
   const contracts = {
     loopRegistry:
       (import.meta.env.VITE_CONTRACT_LOOP_REGISTRY as ViemAddress) ?? zero,
+    // EIP-170 Phase 3 split: fingerprint reads target this when set; the SDK
+    // falls back to loopRegistry when the key is absent. Optional — only
+    // include it when the env var is present (exactOptionalPropertyTypes).
+    ...(import.meta.env.VITE_CONTRACT_LOOP_FINGERPRINT_REGISTRY
+      ? {
+          loopFingerprintRegistry: import.meta.env
+            .VITE_CONTRACT_LOOP_FINGERPRINT_REGISTRY as ViemAddress,
+        }
+      : {}),
     loopAuthorization:
       (import.meta.env.VITE_CONTRACT_LOOP_AUTHORIZATION as ViemAddress) ?? zero,
     loopForceExitAuthorizer:

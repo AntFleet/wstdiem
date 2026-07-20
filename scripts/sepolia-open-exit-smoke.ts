@@ -56,41 +56,46 @@ const OWNER = env(
   "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
 ) as Address;
 
+// Base Sepolia REDEPLOY 2026-07-20 (post-EIP-170-refactor, PRs #9/#10/#11).
+// Supersedes the 2026-07-12 addresses. Canonical source: script/v2/configs/base-sepolia.json.
 const CONTRACTS = {
-  loopRegistry: env("LOOP_REGISTRY", "0xdfdaf03861400273a0a661ed6f9a1163864f2860"),
-  loopAuthorization: env("LOOP_AUTHORIZATION", "0xbaa4fbd327108aeaca64917737e3cecd18ab6099"),
-  loopForceExitAuthorizer: env("LOOP_FORCE_EXIT_AUTHORIZER", "0xc0293cb07864f0db0ecda5e198da475adb860715"),
-  loopExecutorV2: env("LOOP_EXECUTOR_V2", "0xbcc854a8b4dbdf5acb08818cd19d5c0904914e38"),
-  loopForceExitExecutor: env("LOOP_FORCE_EXIT_EXECUTOR", "0x5d2a23630002e544ce9595e021fd978fe25ea553"),
-  loopAnchorRegistry: env("LOOP_ANCHOR_REGISTRY", "0xd7dedbfe7ba8f9af04b4143e5cc1be12aebca79a"),
-  loopRiskOracleAdapter: env("LOOP_RISK_ORACLE_ADAPTER", "0x80db4a9f9f4f8676c03d16782311909027c92b81"),
-  loopFeeRouter: env("LOOP_FEE_ROUTER", "0xc21b5176cacc77a6c58c0714523b0f62d5d5b3fb"),
-  emergencyGuardian: env("EMERGENCY_GUARDIAN", "0xe296e2d59a0f612e2e8f1427d3fb58a60ecd65f6"),
+  loopRegistry: env("LOOP_REGISTRY", "0xB8FD5714364Ee179b71495A3F484f9A720d34E22"),
+  loopFingerprintRegistry: env("LOOP_FINGERPRINT_REGISTRY", "0x747F481c2AC4c6e7f080DcbDc549e8FA29E24C70"),
+  loopAuthorization: env("LOOP_AUTHORIZATION", "0xA001863898Eb6B2F8fa4cc28aB934762426ceAa8"),
+  loopForceExitAuthorizer: env("LOOP_FORCE_EXIT_AUTHORIZER", "0x14776F4e0edF5965Bf2675F557b833A49a623bF8"),
+  loopExecutorV2: env("LOOP_EXECUTOR_V2", "0xFAcecd40649F4cdDE70410DFFd5AdCAcE50E3c4B"),
+  loopForceExitExecutor: env("LOOP_FORCE_EXIT_EXECUTOR", "0x6D651b6689C37d4E88A2710Dd6E22a017C489620"),
+  loopAnchorRegistry: env("LOOP_ANCHOR_REGISTRY", "0xDC0ec9885c06a8F78085472Dc1f8Fe7FFbD0d53F"),
+  loopRiskOracleAdapter: env("LOOP_RISK_ORACLE_ADAPTER", "0x7CDa31cbd921F18FAaE9d747F53c10d58FBa1013"),
+  loopFeeRouter: env("LOOP_FEE_ROUTER", "0x9c5eF7981F583eeb2b161FCC90b3B13969E76779"),
+  emergencyGuardian: env("EMERGENCY_GUARDIAN", "0x5A487F12F0225533Ad841FEc299F9426D4964fC2"),
 } as Record<string, Address>;
 
 const MARKET_ID = env(
   "MARKET_ID",
-  "0x993a63168f646baefcfec1acc9f44138ce787143a31655f5a1a97957924261d2",
+  "0xa4739a27c01f9ec2f88846ae1d0c59636a0a409a50080fef4548d41245b8cdda",
 ) as Hex;
-const DIEM = "0xb4e1c260cae1a9e627155273cea9bba3521db783" as Address;
-const WST = "0x20188de4401750dfaa370a8be69de08722d16990" as Address;
-const MORPHO = "0x89196da4dca5029adff7513dddd103867216eee3" as Address;
+const DIEM = env("DIEM", "0xe4938C8514eA2825Aab6B95bDC4f82b664ADE523") as Address;
+const WST = env("WST", "0xe7088BAd6CDD0355f30CC20c4962918E63B289B6") as Address;
+const MORPHO = env("MORPHO", "0x6cD9F25E78341F175d67599f02e556829DA16f7B") as Address;
 
 const BUNDLE = {
   marketId: MARKET_ID,
   morpho: MORPHO,
-  vault: "0x44f518d678db97fb923d41754d0dd01f01c5b2ba" as Address,
+  vault: env("WST_DIEM_VAULT", "0x57e24553391517057aC8fFbc539f50137654276F") as Address,
   loanToken: DIEM,
   collateralToken: WST,
-  uniswapV3FlashPool: "0x4965ade448f322b88381b5e6f70cdb57c6934819" as Address,
-  sequencerUptimeFeed: "0x291a20ab5debb2b242723f7f1b8b2d828f1f9144" as Address,
-  chainlinkFeed: "0x564eb77a3851c3526d41214b1c4afe6266257910" as Address,
-  curvePool: "0x6d5a89d2610972a5e6d4c7b84bd9725b789782af" as Address,
+  uniswapV3FlashPool: env("UNIV3_FLASH_POOL", "0xCFb87BEDE5A17a3D9b16601723D3a2070AF8Ea31") as Address,
+  sequencerUptimeFeed: env("SEQUENCER_FEED", "0x696B4c107D4f2F1902Cc13F370FeFB33248bE5C6") as Address,
+  chainlinkFeed: env("CHAINLINK_FEED", "0xe2e76617020aEd41D2234b2F345B9AA4dba2756F") as Address,
+  curvePool: env("CURVE_POOL", "0xc2D13DCce20dCDeB5305aE2AC421B4e6271D56E3") as Address,
 };
 
-const REGISTRY_VERSION = 2n;
-const REGISTRY_MERKLE_ROOT =
-  "0xc3286d33b08f8b100448f946ae814e6805ae653aa2d576eb6acce87b00c5d1c5" as Hex;
+// registryVersion + registryMerkleRoot are deployment-specific and the Phase C
+// apply bumps them; read both from the chain at runtime (below) rather than
+// pinning stale literals. Env overrides remain available for offline runs.
+const REGISTRY_VERSION_OVERRIDE = process.env.REGISTRY_VERSION;
+const REGISTRY_MERKLE_ROOT_OVERRIDE = process.env.REGISTRY_MERKLE_ROOT as Hex | undefined;
 const ZERO32 = ("0x" + "00".repeat(32)) as Hex;
 const BPS = 10_000n;
 
@@ -146,6 +151,10 @@ function decodeRevert(err: any): string {
 const AUTH_ABI = parseAbi([
   "function nonceBitmap(address owner, uint64 policyId, uint8 primaryType, uint248 nonceSlot) view returns (uint256)",
 ]);
+const REGISTRY_ABI = parseAbi([
+  "function registryVersion() view returns (uint256)",
+  "function registryMerkleRoot() view returns (bytes32)",
+]);
 const MORPHO_ABI = parseAbi([
   "function position(bytes32 id, address user) view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)",
   "function market(bytes32 id) view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)",
@@ -180,7 +189,27 @@ async function main() {
 
   const block = await publicClient.getBlockNumber();
   const now = Math.floor(Date.now() / 1000);
-  console.log(`block=${block} owner=${account.address}`);
+
+  // Read the live registry config epoch + merkle root (deployment-specific; the
+  // Phase C fingerprint apply bumps registryVersion). Env overrides win for
+  // offline/simulation runs.
+  const REGISTRY_VERSION = REGISTRY_VERSION_OVERRIDE !== undefined
+    ? BigInt(REGISTRY_VERSION_OVERRIDE)
+    : ((await publicClient.readContract({
+        address: CONTRACTS.loopRegistry, abi: REGISTRY_ABI, functionName: "registryVersion",
+      })) as bigint);
+  const REGISTRY_MERKLE_ROOT = (REGISTRY_MERKLE_ROOT_OVERRIDE
+    ?? (await publicClient.readContract({
+        address: CONTRACTS.loopRegistry, abi: REGISTRY_ABI, functionName: "registryMerkleRoot",
+      }))) as Hex;
+  console.log(
+    `block=${block} owner=${account.address} registryVersion=${REGISTRY_VERSION} merkleRoot=${REGISTRY_MERKLE_ROOT}`,
+  );
+  if (REGISTRY_VERSION < 2n) {
+    console.warn(
+      `WARNING: registryVersion=${REGISTRY_VERSION} (< 2) — Phase C fingerprint apply has not landed yet; OPEN/EXIT gates will reject. Run this after the apply.`,
+    );
+  }
 
   // ── free OPEN nonce (primaryType Open = 0) ──
   async function freeNonceBit(primaryTypeU8: number): Promise<{ slot: bigint; bit: number }> {
