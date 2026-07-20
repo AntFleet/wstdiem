@@ -8,7 +8,7 @@ import {LoopV1EIP712} from "./LoopV1EIP712.sol";
 /// @notice Thin wrapper around OpenZeppelin SignatureChecker plus the NF-15 proof hash.
 /// @dev Keeps all EOA/EIP-1271 signature validation routed through OZ per PROTOCOL.md §6.4 / I-66.
 library SignatureCheckerLib {
-    function isValidSignatureNow(address signer, bytes32 digest, bytes memory signature) internal view returns (bool) {
+    function isValidSignatureNow(address signer, bytes32 digest, bytes memory signature) public view returns (bool) {
         return SignatureChecker.isValidSignatureNow(signer, digest, signature);
     }
 
