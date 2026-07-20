@@ -82,10 +82,21 @@ emitter address). EIP-712 digests provably unaffected (wallet-parity oracle gree
 - Effort ≈ 3–6 days total. Config-only fix confirmed insufficient (optimizer_runs=1 still fails).
 
 **Impact on the EIP-712 redeploy (#3):** Phase A (canonical digests) is MERGED. Phase B
-(redeploy) and Phase C (live signTypedData smoke) were **paused behind this blocker** — now
-**unblocked** as of 2026-07-20; ready to resume.
+(redeploy) landed **2026-07-20** on the post-refactor contracts (see below). Phase C (apply +
+live signTypedData smoke) is queued behind the registry timelock.
 
 </details>
+
+### ✅ Base Sepolia REDEPLOY — PHASE 1 LIVE (2026-07-20, post-EIP-170-refactor)
+
+Fresh deploy of the post-refactor contracts (PRs #9/#10/#11) via `DeployMocksSepolia.run()`;
+verified on-chain (bytecode present at all core addresses, on-chain runtime sizes match compiled
+sizes exactly, `fingerprints_()` wired to the split registry, gate correctly reverts
+`ConfigIntegrityFailure()` pre-apply). Addresses in [`base-sepolia.json`](script/v2/configs/base-sepolia.json) `_deployment`.
+- **registry** `0xB8FD…4E22` · **fingerprintRegistry (split)** `0x747F…4C70` · **authorization** `0xA001…eAa8` · **executorV2** `0xFAce…3c4B`
+- **bootstrapper** `0x99dD…81b8` (owns the registry until Phase C) · **market.id** `0xa473…cdda` · deploy blocks 44389682–44389751
+- **Phase C apply block: 44519677** (~3 days; registry timelock 130k blocks). `validateExternalConfig` reverts `ConfigIntegrityFailure()` until then — no loop can open, by design.
+- Supersedes the 2026-07-12 pre-refactor deployment (recorded under `_superseded_2026-07-12`).
 
 ---
 
