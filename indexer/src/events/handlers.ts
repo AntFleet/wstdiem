@@ -186,6 +186,20 @@ export function applyEvent(
       });
       return;
     }
+    case "ExternalFingerprintUpdateQueued":
+    case "ExternalFingerprintUpdateApplied":
+    case "ReclosedIntegration": {
+      // EIP-170 Phase 3: fingerprint events from the split-out
+      // LoopFingerprintRegistry now DECODE cleanly (added to INDEXER_ABI) and
+      // reach a handler instead of falling through as "unknown". They are
+      // intentionally NOT projected yet: there is no fingerprint repository /
+      // table, and choosing a projection schema (per-integration current state
+      // vs. an append-only queued/applied/reclosed event log) is a data-model
+      // decision that needs review rather than a guess here.
+      // TODO(review): decide fingerprint projection schema, then persist here.
+      // Explicit no-op keeps the presence of these logs from crashing decode.
+      return;
+    }
     default:
       // Unknown / unsubscribed event -- ignore.
       return;

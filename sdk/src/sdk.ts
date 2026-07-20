@@ -74,6 +74,14 @@ export interface SdkContractAddresses {
   readonly loopRiskOracleAdapter: Address;
   readonly loopFeeRouter: Address;
   readonly emergencyGuardian: Address;
+  /**
+   * EIP-170 Phase 3: the fingerprint subsystem was split out of LoopRegistry
+   * into its own `LoopFingerprintRegistry` contract. `externalFingerprint` /
+   * `pendingExternalFingerprint` reads now target this address; when omitted the
+   * SDK falls back to `loopRegistry` (pre-split deployments). `validateExternalConfig`
+   * and `navBaseline` remain on the core registry.
+   */
+  readonly loopFingerprintRegistry?: Address;
 }
 
 export interface WstdiemSdk {

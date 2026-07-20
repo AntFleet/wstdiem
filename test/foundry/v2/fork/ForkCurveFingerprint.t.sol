@@ -23,7 +23,7 @@ contract ForkCurveFingerprintTest is BaseMainnetForkSetup {
 
     function testCurveFingerprintHashMatchesRegistryPinned() public view {
         LoopV1Types.ExternalProtocolFingerprint memory loaded =
-            registry.externalFingerprint(_integrationId(LoopV1Types.SOURCE_CURVE_QUOTE));
+            registry.fingerprints_().externalFingerprint(_integrationId(LoopV1Types.SOURCE_CURVE_QUOTE));
         (bytes32 hard, bytes32 tolerance,) = _fingerprintHashes(LoopV1Types.SOURCE_CURVE_QUOTE, venues.curvePool);
         assertEq(loaded.hardEqualityHash, hard);
         assertEq(loaded.toleranceBandHash, tolerance);

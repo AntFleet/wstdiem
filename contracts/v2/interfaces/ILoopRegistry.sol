@@ -32,14 +32,6 @@ interface ILoopRegistry {
         returns (SpenderCheck memory);
     function canonicalSource(bytes32 market, bytes32 sourceId) external view returns (address sourceAddress);
     function requiredEvidenceSourceSet(uint8 primaryType) external view returns (bytes32[] memory sourceIds);
-    function externalFingerprint(bytes32 integrationId)
-        external
-        view
-        returns (LoopV1Types.ExternalProtocolFingerprint memory);
-    function pendingExternalFingerprint(bytes32 integrationId)
-        external
-        view
-        returns (LoopV1Types.ExternalProtocolFingerprint memory fingerprint, uint256 effectiveBlock);
     function preimageDisplayGuaranteedWallet(address wallet) external view returns (bool);
     function anchorSubmitter() external view returns (address);
     function indexerSigningKey() external view returns (address);
@@ -165,13 +157,4 @@ interface ILoopRegistry {
     function setPreimageDisplayGuaranteedWallet(address wallet, bool allowed) external;
     function setPermissionlessCallerAllowed(address caller, bool allowed) external;
     function setProviderFamily(bytes32 rpcEndpointId, bytes32 family) external;
-    function updateExternalFingerprint(
-        bytes32 integrationId,
-        LoopV1Types.ExternalProtocolFingerprint calldata fingerprint
-    ) external;
-    function queueExternalFingerprintUpdate(
-        bytes32 integrationId,
-        LoopV1Types.ExternalProtocolFingerprint calldata fingerprint
-    ) external;
-    function applyExternalFingerprintUpdate(bytes32 integrationId) external;
 }

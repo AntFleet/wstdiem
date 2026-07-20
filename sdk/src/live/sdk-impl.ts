@@ -324,7 +324,13 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     this.readClient = this.rpcQuorum
       ? this.rpcQuorum.asPublicClient()
       : config.publicClient;
-    this.registry = new RegistryReader(this.readClient, config.contracts.loopRegistry);
+    this.registry = new RegistryReader(
+      this.readClient,
+      config.contracts.loopRegistry,
+      // EIP-170 Phase 3: route externalFingerprint reads to the split-out
+      // LoopFingerprintRegistry; fall back to the core registry pre-split.
+      config.contracts.loopFingerprintRegistry ?? config.contracts.loopRegistry,
+    );
     // When no evidenceResolver is supplied:
     //   - preferPlaceholderEvidence → lightweight FRESH placeholders (tests)
     //   - otherwise live venue resolver (D-4 richer values); on RPC failure
@@ -1173,6 +1179,14 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       ["registry", new Set([lc(c.loopRegistry)])],
       ["anchor", new Set([lc(c.loopAnchorRegistry)])],
     ]);
+    // EIP-170 Phase 3: fingerprint events (ExternalFingerprintUpdateQueued /
+    // ...Applied / ReclosedIntegration) now emit from the split-out
+    // LoopFingerprintRegistry. It's optional in config (absent on pre-split
+    // deployments); only trust it when actually configured so we never add
+    // `undefined` to the allowlist.
+    if (c.loopFingerprintRegistry) {
+      map.set("fingerprintRegistry", new Set([lc(c.loopFingerprintRegistry)]));
+    }
     this._knownEmittersCache = map;
     return map;
   }
@@ -3109,6 +3123,9 @@ function freezeContracts(c: SdkContractAddresses): SdkContractAddresses {
     loopRiskOracleAdapter: c.loopRiskOracleAdapter,
     loopFeeRouter: c.loopFeeRouter,
     emergencyGuardian: c.emergencyGuardian,
+    ...(c.loopFingerprintRegistry !== undefined
+      ? { loopFingerprintRegistry: c.loopFingerprintRegistry }
+      : {}),
   });
 }
 

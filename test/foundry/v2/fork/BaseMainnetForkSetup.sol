@@ -202,7 +202,7 @@ abstract contract BaseMainnetForkSetup is Test, DeployHarness, RegistryBatchHelp
         ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](sourceIds.length);
         for (uint256 i = 0; i < sourceIds.length; i++) {
             bytes32 integrationId = _integrationId(sourceIds[i]);
-            registry.queueExternalFingerprintUpdate(integrationId, _fingerprint(sourceIds[i], integrations[i]));
+            registry.fingerprints_().queueExternalFingerprintUpdate(integrationId, _fingerprint(sourceIds[i], integrations[i]));
             ops[i] = _opApplyFingerprint(integrationId);
         }
         vm.roll(block.number + FP_TIMELOCK_BLOCKS);

@@ -42,6 +42,8 @@ const LOOP_RISK_ORACLE_ADAPTER = "0x0000000000000000000000000000000000000107" as
 const LOOP_FEE_ROUTER = "0x0000000000000000000000000000000000000108" as const;
 const EMERGENCY_GUARDIAN = "0x0000000000000000000000000000000000000109" as const;
 const UNI_V3_QUOTER = "0x000000000000000000000000000000000000010a" as const;
+// EIP-170 Phase 3 split-out fingerprint contract emitter.
+const FINGERPRINT_REGISTRY = "0x000000000000000000000000000000000000010b" as const;
 
 const MARKET = ("0x" + "ab".repeat(32)) as `0x${string}`;
 const MORPHO = "0x0000000000000000000000000000000000000201" as const;
@@ -470,6 +472,127 @@ describe("PR-13: decodeLoopEvent expanded ABI", () => {
       data: "0x" as `0x${string}`,
     });
     expect((decoded as { eventName: string }).eventName).toBe("StateSnapshotAccepted");
+  });
+});
+
+describe("EIP-170 Phase 3: fingerprint-registry event decode", () => {
+  const CONTRACTS = {
+    loopRegistry: LOOP_REGISTRY,
+    loopAuthorization: LOOP_AUTH,
+    loopForceExitAuthorizer: LOOP_FORCE_EXIT_AUTH,
+    loopExecutorV2: LOOP_EXEC_V2,
+    loopForceExitExecutor: LOOP_FORCE_EXEC,
+    loopAnchorRegistry: LOOP_ANCHOR_REGISTRY,
+    loopRiskOracleAdapter: LOOP_RISK_ORACLE_ADAPTER,
+    loopFeeRouter: LOOP_FEE_ROUTER,
+    emergencyGuardian: EMERGENCY_GUARDIAN,
+  } as const;
+  const INTEGRATION_ID = ("0x" + "1c".repeat(32)) as `0x${string}`;
+  const FINGERPRINT_HASH = ("0x" + "2d".repeat(32)) as `0x${string}`;
+
+  it("decodes ExternalFingerprintUpdateQueued from the fingerprint registry", async () => {
+    const { sdk } = buildSdk({
+      contracts: { ...CONTRACTS, loopFingerprintRegistry: FINGERPRINT_REGISTRY },
+    });
+    const topics = encodeEventTopics({
+      abi: [
+        {
+          type: "event",
+          name: "ExternalFingerprintUpdateQueued",
+          inputs: [
+            { name: "integrationId", type: "bytes32", indexed: true },
+            { name: "fingerprintHash", type: "bytes32", indexed: false },
+            { name: "effectiveBlock", type: "uint256", indexed: false },
+          ],
+        },
+      ] as const,
+      args: { integrationId: INTEGRATION_ID },
+    });
+    const data = encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "uint256" }],
+      [FINGERPRINT_HASH, 1_500_100n],
+    );
+    const decoded = await sdk.decodeLoopEvent({
+      address: FINGERPRINT_REGISTRY,
+      topics: topics as `0x${string}`[],
+      data,
+    });
+    expect((decoded as { eventName: string }).eventName).toBe(
+      "ExternalFingerprintUpdateQueued",
+    );
+  });
+
+  it("decodes ExternalFingerprintUpdateApplied from the fingerprint registry", async () => {
+    const { sdk } = buildSdk({
+      contracts: { ...CONTRACTS, loopFingerprintRegistry: FINGERPRINT_REGISTRY },
+    });
+    const topics = encodeEventTopics({
+      abi: [
+        {
+          type: "event",
+          name: "ExternalFingerprintUpdateApplied",
+          inputs: [
+            { name: "integrationId", type: "bytes32", indexed: true },
+            { name: "fingerprintHash", type: "bytes32", indexed: false },
+          ],
+        },
+      ] as const,
+      args: { integrationId: INTEGRATION_ID },
+    });
+    const data = encodeAbiParameters([{ type: "bytes32" }], [FINGERPRINT_HASH]);
+    const decoded = await sdk.decodeLoopEvent({
+      address: FINGERPRINT_REGISTRY,
+      topics: topics as `0x${string}`[],
+      data,
+    });
+    expect((decoded as { eventName: string }).eventName).toBe(
+      "ExternalFingerprintUpdateApplied",
+    );
+  });
+
+  it("decodes ReclosedIntegration from the fingerprint registry", async () => {
+    const { sdk } = buildSdk({
+      contracts: { ...CONTRACTS, loopFingerprintRegistry: FINGERPRINT_REGISTRY },
+    });
+    const topics = encodeEventTopics({
+      abi: [
+        {
+          type: "event",
+          name: "ReclosedIntegration",
+          inputs: [{ name: "integrationId", type: "bytes32", indexed: true }],
+        },
+      ] as const,
+      args: { integrationId: INTEGRATION_ID },
+    });
+    const decoded = await sdk.decodeLoopEvent({
+      address: FINGERPRINT_REGISTRY,
+      topics: topics as `0x${string}`[],
+      data: "0x" as `0x${string}`,
+    });
+    expect((decoded as { eventName: string }).eventName).toBe("ReclosedIntegration");
+  });
+
+  it("refuses fingerprint-registry events when the split contract is NOT configured", async () => {
+    // Pre-split deployment: loopFingerprintRegistry absent, so the emitter is
+    // untrusted and decode must fail closed (guards the `undefined` case).
+    const { sdk } = buildSdk({ contracts: { ...CONTRACTS } });
+    const topics = encodeEventTopics({
+      abi: [
+        {
+          type: "event",
+          name: "ReclosedIntegration",
+          inputs: [{ name: "integrationId", type: "bytes32", indexed: true }],
+        },
+      ] as const,
+      args: { integrationId: INTEGRATION_ID },
+    });
+    await expect(
+      sdk.decodeLoopEvent({
+        address: FINGERPRINT_REGISTRY,
+        topics: topics as `0x${string}`[],
+        data: "0x" as `0x${string}`,
+      }),
+    ).rejects.toThrow(/untrusted address/);
   });
 });
 

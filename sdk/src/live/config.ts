@@ -129,6 +129,9 @@ export interface WstdiemContractAddresses {
   loopRiskOracleAdapter: Address;
   loopFeeRouter: Address;
   emergencyGuardian: Address;
+  /** EIP-170 Phase 3 split-out fingerprint contract. `externalFingerprint` reads
+   *  target this when set; falls back to `loopRegistry` otherwise. */
+  loopFingerprintRegistry?: Address;
 }
 
 /** Per-market address bundle (resolved from the registry on read). */

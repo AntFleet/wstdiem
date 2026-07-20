@@ -135,6 +135,34 @@ export const GUARDIAN_ROLE_ROTATED: AbiEvent = {
   ],
 };
 
+// EIP-170 Phase 3: fingerprint events, now emitted by the split-out
+// LoopFingerprintRegistry (contracts/v2/LoopFingerprintRegistry.sol). Shapes
+// from contracts/v2/interfaces/ILoopV1Events.sol:139-147.
+export const EXTERNAL_FINGERPRINT_UPDATE_QUEUED: AbiEvent = {
+  type: "event",
+  name: "ExternalFingerprintUpdateQueued",
+  inputs: [
+    { name: "integrationId", type: "bytes32", indexed: true },
+    { name: "fingerprintHash", type: "bytes32", indexed: false },
+    { name: "effectiveBlock", type: "uint256", indexed: false },
+  ],
+};
+
+export const EXTERNAL_FINGERPRINT_UPDATE_APPLIED: AbiEvent = {
+  type: "event",
+  name: "ExternalFingerprintUpdateApplied",
+  inputs: [
+    { name: "integrationId", type: "bytes32", indexed: true },
+    { name: "fingerprintHash", type: "bytes32", indexed: false },
+  ],
+};
+
+export const RECLOSED_INTEGRATION: AbiEvent = {
+  type: "event",
+  name: "ReclosedIntegration",
+  inputs: [{ name: "integrationId", type: "bytes32", indexed: true }],
+};
+
 export const INDEXER_ABI: AbiEvent[] = [
   LOOP_ACTION_STEP,
   POLICY_CREATED,
@@ -148,4 +176,7 @@ export const INDEXER_ABI: AbiEvent[] = [
   GOVERNANCE_ROLE_CHANGED,
   REGISTRY_EMERGENCY_GUARDIAN_CHANGED,
   GUARDIAN_ROLE_ROTATED,
+  EXTERNAL_FINGERPRINT_UPDATE_QUEUED,
+  EXTERNAL_FINGERPRINT_UPDATE_APPLIED,
+  RECLOSED_INTEGRATION,
 ];

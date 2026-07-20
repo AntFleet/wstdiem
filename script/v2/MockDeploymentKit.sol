@@ -298,7 +298,7 @@ abstract contract MockDeploymentKit is CommonBase {
         for (uint256 i = 0; i < sourceIds.length; i++) {
             bytes32 integrationId = _integrationId(config.market.id, sourceIds[i]);
             integrationIds[i] = integrationId;
-            registry.queueExternalFingerprintUpdate(
+            registry.fingerprints_().queueExternalFingerprintUpdate(
                 integrationId, _fingerprint(config, registry, sourceIds[i], integrations[i])
             );
         }

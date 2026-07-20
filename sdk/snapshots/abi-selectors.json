@@ -33,6 +33,9 @@
     "PolicyRevoking(address,uint64,uint256)": "0xf46035788ad52c28c4a24afad0009c4970fcb9f7269018010b50065b661966aa",
     "AutomationExecuted(uint64,bytes32,address)": "0x9423b35c55f0c0658649d628fe975c8e310069d26016885364623dda773c67c5",
     "AutomationFailed(uint64,bytes32,address,bytes4)": "0x9e19c5b113b167ffe620a72c77b840117e361f78278d4a77404995b77851c5d1",
-    "StateSnapshotAccepted(uint256,bytes32,address)": "0xedd3378d4d02b547a89c8c4c39bda67cf4d9f5d4136960921af39eaa2207a70e"
+    "StateSnapshotAccepted(uint256,bytes32,address)": "0xedd3378d4d02b547a89c8c4c39bda67cf4d9f5d4136960921af39eaa2207a70e",
+    "ExternalFingerprintUpdateQueued(bytes32,bytes32,uint256)": "0x80ec304a9829ff759b11ec7638d8c0d1380503a8716aac7c3ddc6996460fe6e0",
+    "ExternalFingerprintUpdateApplied(bytes32,bytes32)": "0xfc601e760e1764cd7300fb41be12116471bc93573e0e4acbfc6b361991a23c60",
+    "ReclosedIntegration(bytes32)": "0x7dcfba71ea7161e2ff77fb23a6e5d325569af295d3ec0766f7e28b6bbf273bb0"
   }
 }

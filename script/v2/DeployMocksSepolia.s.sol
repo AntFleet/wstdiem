@@ -90,6 +90,7 @@ contract DeployMocksSepolia is Script, MockDeploymentKit {
 
         console2.log("-- core protocol --");
         console2.log("registry", deployed.registry);
+        console2.log("fingerprintRegistry (SDK loopFingerprintRegistry)", address(registry.fingerprints_()));
         console2.log("authorization", deployed.authorization);
         console2.log("executorV2", deployed.executorV2);
         console2.log("forceExitExecutor", deployed.forceExitExecutor);

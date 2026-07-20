@@ -68,7 +68,7 @@ contract MockFingerprintBootstrapper {
             bytes32 integrationId = MockFingerprintLib.integrationId(market.id, sourceIds[i]);
             LoopV1Types.ExternalProtocolFingerprint memory fp =
                 MockFingerprintLib.buildFingerprint(registry, sourceIds[i], integrations[i], market);
-            registry.queueExternalFingerprintUpdate(integrationId, fp);
+            registry.fingerprints_().queueExternalFingerprintUpdate(integrationId, fp);
         }
     }
 

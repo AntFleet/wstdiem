@@ -29,6 +29,12 @@ export class RegistryReader {
   constructor(
     private readonly client: PublicClient,
     private readonly address: Address,
+    /**
+     * EIP-170 Phase 3: fingerprint reads (`externalFingerprint`) target the
+     * split-out LoopFingerprintRegistry. Defaults to the core registry address
+     * for pre-split deployments and single-address test harnesses.
+     */
+    private readonly fingerprintAddress: Address = address,
   ) {}
 
   private read<T>(
@@ -189,7 +195,13 @@ export class RegistryReader {
   }
 
   externalFingerprint(integrationId: Bytes32): Promise<ExternalFingerprintRaw> {
-    return this.read<ExternalFingerprintRaw>("externalFingerprint", [integrationId]);
+    // EIP-170 Phase 3: read from the split-out LoopFingerprintRegistry address.
+    return this.client.readContract({
+      address: this.fingerprintAddress,
+      abi: LOOP_REGISTRY_READ_ABI,
+      functionName: "externalFingerprint" as never,
+      args: [integrationId] as never,
+    }) as Promise<ExternalFingerprintRaw>;
   }
 
   dustBoundFor(market: MarketId, inputAmount: bigint): Promise<bigint> {

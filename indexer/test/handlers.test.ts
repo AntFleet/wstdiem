@@ -12,6 +12,7 @@ import {
   POLICY_CREATED,
   POLICY_UPDATED,
   REGISTRY_CONFIG_BATCH_COMMITTED,
+  RECLOSED_INTEGRATION,
 } from "../src/events/abi.js";
 import { openDatabase } from "../src/db/client.js";
 import {
@@ -153,5 +154,24 @@ describe("applyEvent with canonical ILoopV1Events shapes", () => {
       repos,
     );
     // no public list on registry commits — smoke via no throw is enough; re-read if needed
+  });
+
+  it("decodes fingerprint events (EIP-170 Phase 3) without crashing or projecting", () => {
+    // The split-out LoopFingerprintRegistry events must decode and reach a
+    // handler; the handler is an explicit no-op (no projection table yet), so
+    // applyEvent must not throw and must not write any row.
+    const integrationId = ("0x1c".padEnd(66, "0")) as Hex;
+    const topics = encodeEventTopics({
+      abi: [RECLOSED_INTEGRATION],
+      args: { integrationId },
+    }) as `0x${string}`[];
+    const log = buildLog({ topics, data: "0x" });
+    const decoded = decodeLog(log);
+    expect(decoded?.eventName).toBe("ReclosedIntegration");
+    expect(() =>
+      applyEvent(decoded!, { blockNumber: 100n, blockHash: log.blockHash! }, repos),
+    ).not.toThrow();
+    // No fingerprint projection: unrelated repositories stay empty.
+    expect(repos.policies.list()).toHaveLength(0);
   });
 });

@@ -9,6 +9,7 @@ import {ILoopRegistry} from "../../../contracts/v2/interfaces/ILoopRegistry.sol"
 import {ILoopRiskOracleAdapter} from "../../../contracts/v2/interfaces/ILoopRiskOracleAdapter.sol";
 import {LoopFeeRouter} from "../../../contracts/v2/LoopFeeRouter.sol";
 import {LoopRegistry} from "../../../contracts/v2/LoopRegistry.sol";
+import {LoopFingerprintRegistry} from "../../../contracts/v2/LoopFingerprintRegistry.sol";
 import {LoopRiskOracleAdapter} from "../../../contracts/v2/LoopRiskOracleAdapter.sol";
 import {LoopV1EIP712} from "../../../contracts/v2/libraries/LoopV1EIP712.sol";
 import {LoopV1ActionValidation} from "../../../contracts/v2/libraries/LoopV1ActionValidation.sol";
@@ -347,7 +348,7 @@ contract PR5RegistryRiskFeeTest is RegistryBatchHelpers, Test {
         _commit(registry, configOps, bytes32(uint256(1)));
         bytes32 integrationId = _integrationId(LoopV1Types.SOURCE_VAULT_NAV);
         LoopV1Types.ExternalProtocolFingerprint memory fp = _fingerprint(LoopV1Types.SOURCE_VAULT_NAV, address(vault));
-        registry.queueExternalFingerprintUpdate(integrationId, fp);
+        registry.fingerprints_().queueExternalFingerprintUpdate(integrationId, fp);
         ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](1);
         ops[0] = _opApplyFingerprint(integrationId);
         uint256 nextVersion = registry.registryVersion() + 1;
@@ -356,7 +357,7 @@ contract PR5RegistryRiskFeeTest is RegistryBatchHelpers, Test {
 
         vm.roll(block.number + 130_000);
         _commit(registry, ops, bytes32(uint256(2)));
-        LoopV1Types.ExternalProtocolFingerprint memory loaded = registry.externalFingerprint(integrationId);
+        LoopV1Types.ExternalProtocolFingerprint memory loaded = registry.fingerprints_().externalFingerprint(integrationId);
         assertEq(loaded.fingerprintHash, fp.fingerprintHash);
     }
 
@@ -637,8 +638,11 @@ contract PR5RegistryRiskFeeTest is RegistryBatchHelpers, Test {
         LoopV1Types.ExternalProtocolFingerprint memory fp = _fingerprint(LoopV1Types.SOURCE_VAULT_NAV, address(vault));
         fp.hardEqualityHash = keccak256("bad-hard");
         fp = _rehash(fp);
+        // Cache the fingerprint registry ref first: `registry.fingerprints_()` is a separate call that
+        // would otherwise consume the expectRevert cheatcode (EIP-170 Phase 3 split).
+        LoopFingerprintRegistry fpReg = registry.fingerprints_();
         vm.expectRevert(abi.encodeWithSelector(LoopV1Errors.FingerprintInvalid.selector, uint8(1)));
-        registry.queueExternalFingerprintUpdate(_integrationId(LoopV1Types.SOURCE_VAULT_NAV), fp);
+        fpReg.queueExternalFingerprintUpdate(_integrationId(LoopV1Types.SOURCE_VAULT_NAV), fp);
     }
 
     function testValidateExternalConfigDetectsVaultNavDrift() public {
@@ -685,12 +689,13 @@ contract PR5RegistryRiskFeeTest is RegistryBatchHelpers, Test {
         ops[0] = _opVault(market, address(vault));
         _commit(registry, ops, bytes32(uint256(28)));
         bytes32 integrationId = _integrationId(LoopV1Types.SOURCE_VAULT_NAV);
-        registry.queueExternalFingerprintUpdate(
+        registry.fingerprints_().queueExternalFingerprintUpdate(
             integrationId, _fingerprint(LoopV1Types.SOURCE_VAULT_NAV, address(vault))
         );
         vm.roll(block.number + 130_000);
         ops[0] = _opApplyFingerprint(integrationId);
-        vm.expectEmit(true, false, false, true, address(registry));
+        // ReclosedIntegration now emits from the split-out fingerprint registry (EIP-170 Phase 3).
+        vm.expectEmit(true, false, false, true, address(registry.fingerprints_()));
         emit ReclosedIntegration(integrationId);
         _commit(registry, ops, bytes32(uint256(29)));
     }
@@ -867,7 +872,7 @@ contract PR5RegistryRiskFeeTest is RegistryBatchHelpers, Test {
         ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](sourceIds.length);
         for (uint256 i = 0; i < sourceIds.length; i++) {
             bytes32 integrationId = _integrationId(sourceIds[i]);
-            registry.queueExternalFingerprintUpdate(integrationId, _fingerprint(sourceIds[i], integrations[i]));
+            registry.fingerprints_().queueExternalFingerprintUpdate(integrationId, _fingerprint(sourceIds[i], integrations[i]));
             ops[i] = _opApplyFingerprint(integrationId);
         }
         vm.roll(block.number + 130_000);
