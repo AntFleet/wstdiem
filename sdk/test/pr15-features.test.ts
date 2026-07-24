@@ -7,8 +7,11 @@
 //     (no contract reads attempted).
 
 import { describe, it, expect } from "vitest";
+import { decodeFunctionData } from "viem";
 import { createSdk } from "../src/live/sdk-impl.js";
+import { LOOP_EXECUTOR_V2_ABI } from "../src/live/abis.js";
 import { asChainId, asPolicyId } from "../src/types/branded.js";
+import { SOURCE_ID_HASHES } from "../src/types/evidence.js";
 import { FakePublicClient, fakeFetch } from "./live-helpers.js";
 import type { MarketAddressBundle } from "../src/live/config.js";
 import type { EvidenceResolver } from "../src/live/evidence-resolver.js";
@@ -255,6 +258,50 @@ describe("PR-15: sourceAddress canonical-source cross-check (audit H-2)", () => 
     const sdk = buildSdkWithResolver(resolver);
     await expect(sdk.buildAuthorization(openTemplate as never)).rejects.toThrow(
       /does not match registry\.canonicalSource/,
+    );
+  });
+
+  // Regression: the executor calldata's `sources[].sourceId` slot is bytes32 and
+  // takes the keccak256 sourceIdHash, NEVER the raw UTF-8 label. Previously
+  // evidenceToCalldata forwarded s.sourceId ("morpho-position", 15 bytes),
+  // which viem's encodeFunctionData rejected with
+  // AbiEncodingBytesSizeMismatchError (bytes15 != bytes32). buildAuthorization
+  // alone never surfaced it — only buildTransaction/attachSignature encode the
+  // executor calldata. This locks the sourceIdHash convention on that path.
+  it("encodes sourceIdHash (not the raw label) into the executor calldata bytes32 sourceId slot", async () => {
+    const resolver: EvidenceResolver = async () => ({
+      sources: [
+        {
+          sourceId: "morpho-position",
+          sourceIdHash: SOURCE_ID_HASHES["morpho-position"],
+          sourceAddress: MORPHO,
+          status: "fresh" as const,
+          lastUpdateBlock: 1_500_000n as never,
+          valueHash: ("0x" + "aa".repeat(32)) as `0x${string}`,
+        } as never,
+      ],
+    });
+    const sdk = buildSdkWithResolver(resolver);
+
+    // buildTransaction goes through evidenceToCalldata + encodeFunctionData —
+    // the exact path that threw AbiEncodingBytesSizeMismatchError before the fix.
+    const tx = await sdk.buildTransaction(openTemplate as never);
+    expect(tx.data.length).toBeGreaterThan(2);
+
+    // Decode the executor calldata and assert the on-chain sourceId equals the
+    // canonical keccak256 sourceIdHash, matching hashSources() in the encoder.
+    const decoded = decodeFunctionData({
+      abi: LOOP_EXECUTOR_V2_ABI,
+      data: tx.data as `0x${string}`,
+    });
+    expect(decoded.functionName).toBe("executeOpen");
+    // args = [action, sig, evidence, proof]; evidence.sources is the encoded set.
+    const evidenceArg = (decoded.args as readonly unknown[])[2] as {
+      sources: readonly { sourceId: `0x${string}` }[];
+    };
+    expect(evidenceArg.sources).toHaveLength(1);
+    expect(evidenceArg.sources[0]!.sourceId.toLowerCase()).toBe(
+      SOURCE_ID_HASHES["morpho-position"].toLowerCase(),
     );
   });
 });

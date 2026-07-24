@@ -2538,7 +2538,12 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       blockNumber: BigInt(evidence.blockNumber),
       stateBitmap: Number(evidence.stateBitmap),
       sources: evidence.sources.map((s) => ({
-        sourceId: s.sourceId as `0x${string}`,
+        // The executor ABI's `sourceId` slot is bytes32 — it takes the
+        // keccak256 sourceIdHash, NEVER the raw UTF-8 label (e.g.
+        // "morpho-position" is 15 bytes and cannot fit a bytes32). This mirrors
+        // hashSources() in evidence/encoder.ts, which encodes s.sourceIdHash
+        // into the same on-chain slot so the executor's recompute matches.
+        sourceId: s.sourceIdHash as `0x${string}`,
         sourceAddress: s.sourceAddress,
         status: this.sourceStatusU8(s.status),
         lastUpdateBlock: BigInt(s.lastUpdateBlock),
