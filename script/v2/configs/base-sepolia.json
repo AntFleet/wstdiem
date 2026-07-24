@@ -4,8 +4,8 @@
   "_comment": "Base Sepolia has no real Morpho / wstDIEM vault / Curve / Uniswap / Chainlink to point at, so the beta runs against MOCK external protocols. Deploy them with `forge script script/v2/DeployMocks.s.sol:DeployMocks` (see that file's header). The mock/core addresses below are FILLED FROM the DeployMocks console output at deploy time. Do NOT run the canonical `Deploy.s.sol` against this file — DeployMocks bootstraps its own mock venues and fingerprints. Placeholder 0x2000.../0x3000... values are kept only as valid-shaped defaults and MUST be overwritten with the DeployMocks output before the addresses are relied upon.",
   "_deployMocks": true,
   "_deployment": {
-    "_comment": "LIVE mock deploy via DeployMocksSepolia.s.sol. REDEPLOYED 2026-07-20 (Phase B of the EIP-712 redeploy #3) on the post-EIP-170-refactor contracts (PRs #9/#10/#11) — the July-12 deployment used the pre-refactor contracts and is now SUPERSEDED (see _superseded below). Phase 1 (deploy + queue) 2026-07-20 blocks 44389682–44389751; phase 2 (applyFingerprints) PENDING until timelock elapses at block 44519677 (~3 days). Deployer/operator is a throwaway EOA whose key is required for phase 2 (bootstrapper.applyAll is onlyOperator). Registry now delegates fingerprint storage/validation to the split-out LoopFingerprintRegistry (fingerprintRegistry below); SDK config.loopFingerprintRegistry must point at it.",
-    "status": "phase1-queued",
+    "_comment": "LIVE mock deploy via DeployMocksSepolia.s.sol. REDEPLOYED 2026-07-20 (Phase B of the EIP-712 redeploy #3) on the post-EIP-170-refactor contracts (PRs #9/#10/#11) — the July-12 deployment used the pre-refactor contracts and is now SUPERSEDED (see _superseded below). Phase 1 (deploy + queue) 2026-07-20 blocks 44389682–44389751. Phase C (applyFingerprints) BROADCAST 2026-07-24 after the 130k-block timelock elapsed: fingerprints applied at block 44555942, registryVersion advanced to 2, OPEN+EXIT gates validate true on-chain. Registry is Ownable2Step: applyFingerprints() transferred ownership toward governance (tx block 44555944) but the handoff is PENDING — pendingOwner is governance (0xb418…b96A) and governance must still call acceptOwnership() to finalize; until then registry.owner() is still the bootstrapper. Registry delegates fingerprint storage/validation to the split-out LoopFingerprintRegistry (fingerprintRegistry below); SDK config.loopFingerprintRegistry must point at it.",
+    "status": "live",
     "deployer": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "governance": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "bootstrapper": "0x99ddE515cB205c4a749c93Ada84eD93e7DF181b8",
@@ -14,8 +14,10 @@
     "deployBlockLast": 44389751,
     "fingerprintApplyBlock": 44519677,
     "registryVersionAtPhase1": 1,
-    "fingerprintsAppliedAtBlock": null,
-    "registryVersionAtPhase2": null,
+    "fingerprintsAppliedAtBlock": 44555942,
+    "registryVersionAtPhase2": 2,
+    "registryOwnershipHandoff": "pending-accept",
+    "registryPendingOwner": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "rpc": "https://base-sepolia-rpc.publicnode.com",
     "core": {
       "registry": "0xB8FD5714364Ee179b71495A3F484f9A720d34E22",
