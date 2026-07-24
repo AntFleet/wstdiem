@@ -316,8 +316,20 @@ async function main() {
   const mkt = (await publicClient.readContract({
     address: MORPHO, abi: MORPHO_ABI, functionName: "market", args: [MARKET_ID],
   })) as [bigint, bigint, bigint, bigint, bigint, bigint];
-  const borrowShares = posNow[1];
-  const collateralNow = posNow[2];
+  let borrowShares = posNow[1];
+  let collateralNow = posNow[2];
+  // Simulation-only fallback: when EXIT is not broadcast and no live position
+  // exists (the OPEN in this run was never broadcast either), synthesize a
+  // position purely so the EXIT build+sign path executes. The eth_call
+  // simulate below will still revert (no real collateral on-chain) — that is
+  // expected. The point is to confirm the SDK encodes the Exit executor
+  // calldata, including the bytes32 evidence `sourceId` slot, without throwing.
+  const exitBroadcast = process.env.EXIT_BROADCAST === "1";
+  if (!exitBroadcast && collateralNow === 0n) {
+    borrowShares = 1_000_000n;
+    collateralNow = 10_000_000_000_000_000n; // 1e16, comfortably above sellColl
+    console.log("EXIT: no live position; using synthetic bounds (simulation-only build+sign)");
+  }
   // debt assets = ceilDiv(borrowShares * totalBorrowAssets, totalBorrowShares)
   const debt = mkt[3] === 0n ? borrowShares : (borrowShares * mkt[2] + mkt[3] - 1n) / mkt[3];
   const flashAmount = debt;
