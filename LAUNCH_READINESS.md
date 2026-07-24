@@ -21,7 +21,19 @@ Playwright e2e pass against the live deployment.
 
 > ✅ **RESOLVED 2026-07-20 (PR #9/#10/#11).** All four core contracts are now under the
 > EIP-170 ceiling and `forge build --sizes` exits 0 — the protocol is deployable again. The
-> redeploy (#3 Phase B/C) is unblocked. Historical detail retained below.
+> redeploy (#3 Phase B/C) is done; Base Sepolia market is live (registryVersion 2).
+
+> 🚨 **NEW P0 BLOCKER 2026-07-24 (issue #13).** The OPEN path **never contributes the user's
+> equity** into the position — `LoopExecutorV2._executeOpenInCallback` supplies only the
+> flash-borrowed principal (converted to wstDIEM), so every open is under-collateralized and
+> reverts `HealthFactorBoundFailure` at *all* leverages (post-open HF ≈ LLTV/NAV ≈ 0.86 < the
+> 1.05 bound). Contract defect present since the first commit `b40e607`, independent of the
+> EIP-170 refactor. Confirmed via live numeric reproduction + spec (`PROTOCOL.md:269` requires
+> "combining … the user's transferred wstDIEM"). **Opening a leveraged loop is non-functional
+> as deployed.** Fix needs: pull+accumulate owner equity in the open callback, a new *signed*
+> equity field in `Open`/`OpenBounds` (⇒ EIP-712 `OPEN_TYPEHASH` bump rippling through the #6
+> canonical-digest work + SDK + wallet-parity oracle), then a fresh Phase B/C redeploy + re-audit.
+> SDK build→sign path and all on-chain gates are otherwise verified green. See issue #13.
 
 ---
 
