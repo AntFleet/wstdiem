@@ -8,6 +8,7 @@ import {
   useConnectedAccount as useAccount,
   signAndAttachAction,
   broadcastTx,
+  ConnectWalletButton,
 } from "../wallet/index.js";
 import type { Action, ForceExitAction, Policy } from "@wstdiem/sdk";
 import { RiskHeader } from "../components/RiskHeader.js";
@@ -252,9 +253,11 @@ export function Positions(): JSX.Element {
           No wallet connected
         </h2>
         <p className="mt-1">
-          Connect a wallet from the header to load your position risk +
-          authorizations.
+          Connect a wallet to load your position risk and authorizations.
         </p>
+        <div className="mt-4">
+          <ConnectWalletButton />
+        </div>
       </div>
     );
   }

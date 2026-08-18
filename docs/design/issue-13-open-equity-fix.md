@@ -1,6 +1,6 @@
 # Design: fix OPEN omitting user equity (issue #13)
 
-Status: **implementing** (P1+P2 on `fix/issue-13-open-equity`; review gate before merge)
+Status: **shipped** (PR #14; Sepolia Phase B/C live 2026-08-18; OPEN+EXIT smoke green)
 Scope: core contracts + EIP-712 `OPEN_TYPEHASH` + SDK + wallet-parity oracle + redeploy
 Related: issue #13, `LAUNCH_READINESS.md` P0 (2026-07-24), the #6 canonical-digest work
 

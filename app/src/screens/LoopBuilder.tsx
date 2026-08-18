@@ -4,11 +4,17 @@
 // live HF gauge as the slider moves, MEV mode selector, Open-preview CTA.
 // The preview drawer renders all §10 mandatory fields.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   useConnectedAccount as useAccount,
   signAndAttachAction,
   broadcastTx,
+  ConnectWalletButton,
+  useErc20Allowance,
+  useErc20Balance,
+  useApproveErc20,
+  formatTokenAmount,
+  configuredChainLabel,
 } from "../wallet/index.js";
 import { asBasisPoints, type MevProtectionMode } from "@wstdiem/sdk";
 import { IntentTabs, type IntentId, getIntentMeta } from "../components/IntentTabs.js";
@@ -57,6 +63,7 @@ export function LoopBuilder(): JSX.Element {
   const [mevWaiverBits, setMevWaiverBits] = useState<number>(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | undefined>(undefined);
 
   const intentMeta = getIntentMeta(intent);
   const collateralAmount = parseAmount(amount);
@@ -106,10 +113,32 @@ export function LoopBuilder(): JSX.Element {
     gpmGates.anyFail ||
     !previewReady;
 
+  const collateralToken = import.meta.env.VITE_MARKET_COLLATERAL_TOKEN as
+    | `0x${string}`
+    | undefined;
+  const executor = import.meta.env.VITE_CONTRACT_LOOP_EXECUTOR_V2 as
+    | `0x${string}`
+    | undefined;
+  const balanceQuery = useErc20Balance(collateralToken, account.address);
+  const allowanceQuery = useErc20Allowance(
+    collateralToken,
+    account.address,
+    executor,
+  );
+  const approve = useApproveErc20();
+  useEffect(() => {
+    if (approve.isSuccess) {
+      void allowanceQuery.refetch();
+    }
+  }, [approve.isSuccess, allowanceQuery]);
+  const needsApprove =
+    Boolean(account.isConnected && collateralAmount && executor) &&
+    (allowanceQuery.data === undefined || allowanceQuery.data < collateralAmount!);
+
   const signOverrideReason = !account.isConnected
     ? "Connect a wallet to sign."
     : chainPin.wrongChain
-    ? `Wrong chain (id=${chainPin.current}). Switch to Base (id=${chainPin.expected}).`
+    ? `Wrong chain (id=${chainPin.current}). Switch to ${configuredChainLabel()} (id=${chainPin.expected}).`
     : mevWaiverIncomplete
     ? "MEV waiver bits incomplete — acknowledge every required waiver."
     : quoteStale
@@ -136,13 +165,14 @@ export function LoopBuilder(): JSX.Element {
   const onSign = useCallback(async () => {
     if (!proposedAction) return;
     setSigning(true);
+    setSignError(undefined);
     try {
-      // Canonical sign flow: SDK.buildAuthorization → wallet.signTypedData →
-      // SDK.attachSignature (re-derives + verifies the digest) → broadcast.
       const tx = await signAndAttachAction({ sdk, action: proposedAction });
       await broadcastTx(tx);
       setPreviewOpen(false);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setSignError(message);
       // eslint-disable-next-line no-console
       console.error("LoopBuilder.onSign failed:", err);
     } finally {
@@ -157,11 +187,25 @@ export function LoopBuilder(): JSX.Element {
         className="space-y-4 rounded-lg border border-border bg-surface px-4 py-4"
       >
         <header>
-          <h2 className="text-lg font-semibold text-text">Loop Builder</h2>
+          <h2 className="text-lg font-semibold text-text">Open a loop</h2>
           <p className="text-sm text-text-muted">
-            Pick your intent, set your inputs, preview every §10 field, sign.
+            Connect your wallet on {configuredChainLabel()}, approve wstDIEM,
+            then preview and sign. Equity is pulled from your wallet and
+            combined with the flash mint.
           </p>
         </header>
+
+        {!account.isConnected ? (
+          <div
+            className="flex flex-col gap-3 rounded-md border border-accent/40 bg-accent/5 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+            data-testid="loop-connect-banner"
+          >
+            <p className="text-sm text-text">
+              Connect a wallet to set amount, preview, and sign.
+            </p>
+            <ConnectWalletButton />
+          </div>
+        ) : null}
 
         <IntentTabs
           activeIntent={intent}
@@ -180,22 +224,46 @@ export function LoopBuilder(): JSX.Element {
         </div>
 
         <div data-testid="amount-input-section" className="space-y-1.5">
-          <label
-            htmlFor="amount-input"
-            className="block text-xs font-semibold uppercase tracking-wide text-text-muted"
-          >
-            Amount (wstDIEM)
-          </label>
-          <input
-            id="amount-input"
-            type="number"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.0"
-            className="w-full rounded-md border border-border bg-canvas px-3 py-2 font-mono text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent/40"
-            data-testid="amount-input"
-          />
+          <div className="flex items-center justify-between">
+            <label
+              htmlFor="amount-input"
+              className="block text-xs font-semibold uppercase tracking-wide text-text-muted"
+            >
+              Amount (wstDIEM)
+            </label>
+            <span className="font-mono text-[11px] text-text-muted" data-testid="wst-balance">
+              Balance {formatTokenAmount(balanceQuery.data)}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              id="amount-input"
+              type="number"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.0"
+              className="w-full rounded-md border border-border bg-canvas px-3 py-2 font-mono text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent/40"
+              data-testid="amount-input"
+            />
+            <button
+              type="button"
+              disabled={balanceQuery.data === undefined || balanceQuery.data === 0n}
+              onClick={() => {
+                if (balanceQuery.data === undefined) return;
+                const whole = balanceQuery.data / 10n ** 18n;
+                const frac = (balanceQuery.data % 10n ** 18n)
+                  .toString()
+                  .padStart(18, "0")
+                  .replace(/0+$/, "");
+                setAmount(frac ? `${whole}.${frac}` : whole.toString());
+              }}
+              className="rounded-md border border-border px-3 text-xs font-semibold text-text-muted hover:text-text disabled:opacity-40"
+              data-testid="amount-max"
+            >
+              Max
+            </button>
+          </div>
         </div>
 
         <div data-testid="leverage-slider-section" className="space-y-1.5">
@@ -249,15 +317,39 @@ export function LoopBuilder(): JSX.Element {
           disabled={signing}
         />
 
-        <div className="flex items-center justify-end gap-2">
+        {signError ? (
+          <p
+            role="alert"
+            className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-text"
+            data-testid="sign-error"
+          >
+            {signError}
+          </p>
+        ) : null}
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+          {needsApprove && account.isConnected && !chainPin.wrongChain ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!collateralToken || !executor) return;
+                approve.approve(collateralToken, executor);
+              }}
+              disabled={approve.isPending || !collateralToken || !executor}
+              className="rounded-md border border-accent/60 bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
+              data-testid="approve-wst-cta"
+            >
+              {approve.isPending ? "Approving…" : "Approve wstDIEM"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onOpenPreview}
-            disabled={!proposedAction && !account.isConnected}
+            disabled={!proposedAction || !account.isConnected || needsApprove}
             className="rounded-md border border-accent/60 bg-accent px-4 py-2 text-sm font-semibold text-canvas hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-raised disabled:text-text-muted"
             data-testid="open-preview-cta"
           >
-            Open preview
+            {needsApprove ? "Approve first" : "Preview & sign"}
           </button>
         </div>
       </section>
