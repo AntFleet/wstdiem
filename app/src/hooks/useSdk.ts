@@ -13,13 +13,15 @@ import {
   type Address as ViemAddress,
   type PublicClient,
 } from "viem";
-import { base } from "viem/chains";
 import {
   asChainId,
+  asMarketId,
   createSdk,
+  type MarketAddressBundle,
   type WstdiemSdk,
   type WstdiemSdkConfig,
 } from "@wstdiem/sdk";
+import { configuredChain, configuredChainId } from "../lib/chain.js";
 
 /** Thrown when the production boot check finds the indexer signing key
  * missing. The app root catches this and renders a blocking error screen. */
@@ -72,6 +74,49 @@ function readRpcConfig(): RpcConfigEntry[] {
   return entries;
 }
 
+function envAddress(key: string): ViemAddress | undefined {
+  const raw = import.meta.env[key] as string | undefined;
+  if (!raw || !/^0x[0-9a-fA-F]{40}$/.test(raw)) return undefined;
+  return raw as ViemAddress;
+}
+
+function readInitialMarkets(): MarketAddressBundle[] {
+  const marketId = import.meta.env.VITE_PHASE_1_MARKET_IDS?.split(",")[0]?.trim();
+  const morpho = envAddress("VITE_MARKET_MORPHO");
+  const vault = envAddress("VITE_MARKET_VAULT");
+  const loanToken = envAddress("VITE_MARKET_LOAN_TOKEN");
+  const collateralToken = envAddress("VITE_MARKET_COLLATERAL_TOKEN");
+  const uniswapV3FlashPool = envAddress("VITE_MARKET_UNIV3_FLASH_POOL");
+  const sequencerUptimeFeed = envAddress("VITE_MARKET_SEQUENCER_FEED");
+  if (
+    !marketId ||
+    !/^0x[0-9a-fA-F]{64}$/.test(marketId) ||
+    !morpho ||
+    !vault ||
+    !loanToken ||
+    !collateralToken ||
+    !uniswapV3FlashPool ||
+    !sequencerUptimeFeed
+  ) {
+    return [];
+  }
+  const chainlinkFeed = envAddress("VITE_MARKET_CHAINLINK_FEED");
+  const curvePool = envAddress("VITE_MARKET_CURVE_POOL");
+  return [
+    {
+      marketId: asMarketId(marketId as `0x${string}`),
+      morpho,
+      vault,
+      loanToken,
+      collateralToken,
+      uniswapV3FlashPool,
+      sequencerUptimeFeed,
+      ...(chainlinkFeed ? { chainlinkFeed } : {}),
+      ...(curvePool ? { curvePool } : {}),
+    },
+  ];
+}
+
 function readIndexerSigningKey(): ViemAddress | undefined {
   const raw = (import.meta.env.VITE_INDEXER_PUBKEY ?? "").toLowerCase();
   if (raw === "" || raw === ZERO_PUBKEY_FULL || raw === ZERO_PUBKEY_32) {
@@ -91,9 +136,8 @@ function buildSdkConfig(): {
     import.meta.env.VITE_INDEXER_URL ?? "https://indexer.wstdiem.xyz";
   const allowSingleClient =
     import.meta.env.VITE_ALLOW_SINGLE_CLIENT_READS === "true";
-  const chainId = asChainId(
-    Number(import.meta.env.VITE_CHAIN_ID ?? base.id),
-  );
+  const chainId = asChainId(configuredChainId());
+  const appChain = configuredChain();
 
   if (rpcs.length === 0) {
     throw new Error(
@@ -110,7 +154,7 @@ function buildSdkConfig(): {
     throw new Error("useSdk: primary RPC missing");
   }
   const primaryClient = createPublicClient({
-    chain: base,
+    chain: appChain,
     transport: http(primary.url),
   }) as PublicClient;
 
@@ -121,7 +165,7 @@ function buildSdkConfig(): {
     rpcs.length >= 2
       ? rpcs.map((r) => ({
           client: createPublicClient({
-            chain: base,
+            chain: appChain,
             transport: http(r.url),
           }) as PublicClient,
           providerFamily: r.family,
@@ -207,11 +251,14 @@ function buildSdkConfig(): {
       }
     : {};
 
+  const initialMarkets = readInitialMarkets();
   const config: WstdiemSdkConfig = {
     chainId,
     publicClient: primaryClient,
     indexerBaseUrl,
     contracts,
+    ...(initialMarkets.length > 0 ? { initialMarkets } : {}),
+    vaultConvertToSharesUnsupported: true,
     strictAnchorCrossCheck: !allowSingleClient,
     allowSingleClientReads: allowSingleClient,
     ...(publicClients ? { publicClients } : {}),
@@ -245,7 +292,7 @@ export function useSdk(): SdkRuntimeContext {
       indexerSignatureVerificationDisabled,
     } = buildSdkConfig();
     const sdk = createSdk(config);
-    cached = {
+    const ctx: SdkRuntimeContext = {
       sdk,
       chainId: config.chainId as number,
       indexerBaseUrl: config.indexerBaseUrl,
@@ -253,7 +300,8 @@ export function useSdk(): SdkRuntimeContext {
       rpcQuorumDegradedAtInit,
       indexerSignatureVerificationDisabled,
     };
-    return cached;
+    cached = ctx;
+    return ctx;
   }, []);
 }
 

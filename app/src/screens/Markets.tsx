@@ -20,7 +20,9 @@ import {
   DEFAULT_FILTERS,
   type MarketFilters,
 } from "../components/MarketFilterStrip.js";
+import { Link } from "react-router-dom";
 import { useMarketContext } from "../hooks/useMarketContext.js";
+import { ConnectWalletButton, useConnectedAccount } from "../wallet/index.js";
 import { useSdk } from "../hooks/useSdk.js";
 import { useAnchorFreshness } from "../hooks/useAnchorFreshness.js";
 import { hasUnknownBits } from "../lib/state-bits.js";
@@ -75,6 +77,7 @@ function matchesFilters(
 }
 
 export function Markets(): JSX.Element {
+  const account = useConnectedAccount();
   const { activeMarket: _activeMarket, allMarketIds } = useMarketContext();
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_FILTERS);
   const anchorQuery = useAnchorFreshness();
@@ -131,6 +134,26 @@ export function Markets(): JSX.Element {
           .
         </p>
       </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {account.isConnected ? (
+          <Link
+            to="/loop"
+            className="inline-flex items-center rounded-md bg-accent px-4 py-2 text-sm font-semibold text-canvas hover:opacity-90"
+            data-testid="markets-open-loop"
+          >
+            Open a loop
+          </Link>
+        ) : (
+          <ConnectWalletButton label="Connect to open a loop" />
+        )}
+        <Link
+          to="/positions"
+          className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm text-text-muted hover:text-text"
+        >
+          View positions
+        </Link>
+      </div>
 
       <MarketFilterStrip filters={filters} onChange={setFilters} />
 

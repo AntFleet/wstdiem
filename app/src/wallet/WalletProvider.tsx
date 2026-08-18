@@ -4,7 +4,7 @@
 import type { ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 import { ConnectKitProvider } from "connectkit";
-import { wagmiConfig } from "./config.js";
+import { wagmiConfig, CHAIN_ID_BASE } from "./config.js";
 
 interface WalletProviderProps {
   children: ReactNode;
@@ -22,7 +22,7 @@ export function WalletProvider({ children }: WalletProviderProps): JSX.Element {
           // §6.3 phishing-resistance posture — no "instant" connect flows that
           // hide the wallet origin. Force explicit chain-pin to Base.
           enforceSupportedChains: true,
-          initialChainId: 8453,
+          initialChainId: CHAIN_ID_BASE,
           hideBalance: false,
           hideTooltips: false,
         }}

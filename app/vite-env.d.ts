@@ -17,6 +17,15 @@ interface ImportMetaEnv {
   readonly VITE_PHASE_1_MARKET_IDS?: string;
   readonly VITE_BUILD_HASH?: string;
   readonly VITE_CONTRACT_LOOP_REGISTRY?: string;
+  readonly VITE_CONTRACT_LOOP_FINGERPRINT_REGISTRY?: string;
+  readonly VITE_MARKET_MORPHO?: string;
+  readonly VITE_MARKET_VAULT?: string;
+  readonly VITE_MARKET_LOAN_TOKEN?: string;
+  readonly VITE_MARKET_COLLATERAL_TOKEN?: string;
+  readonly VITE_MARKET_UNIV3_FLASH_POOL?: string;
+  readonly VITE_MARKET_SEQUENCER_FEED?: string;
+  readonly VITE_MARKET_CHAINLINK_FEED?: string;
+  readonly VITE_MARKET_CURVE_POOL?: string;
   readonly VITE_CONTRACT_LOOP_AUTHORIZATION?: string;
   readonly VITE_CONTRACT_LOOP_FORCE_EXIT_AUTHORIZER?: string;
   readonly VITE_CONTRACT_LOOP_EXECUTOR_V2?: string;

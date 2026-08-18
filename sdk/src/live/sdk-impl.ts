@@ -1443,6 +1443,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     value: bigint;
     digest: ActionDigest;
     pinnedBlockNumber: BlockNumber;
+    typedData: unknown;
   }> {
     const assembled = await this.assembleAuthorization(action);
     const executor = await this.registry.executorFor(action.primaryType);
@@ -1453,6 +1454,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       value: 0n,
       digest: assembled.digest,
       pinnedBlockNumber: assembled.pinnedBlockNumber,
+      typedData: assembled.typedData,
     };
   }
 

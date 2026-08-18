@@ -83,7 +83,7 @@ export function Header(props: HeaderProps): JSX.Element {
           >
             wstDIEM
           </a>
-          <nav className="flex items-center gap-1" aria-label="Primary">
+          <nav className="flex max-w-[55vw] items-center gap-1 overflow-x-auto sm:max-w-none" aria-label="Primary">
             {ROUTES.map((r) => (
               <NavLink
                 key={r.to}

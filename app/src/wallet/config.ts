@@ -7,9 +7,9 @@
 // signing-flow audit reviews exactly one wallet entrypoint.
 
 import { http, createConfig } from "wagmi";
-import { base } from "wagmi/chains";
 import { coinbaseWallet, injected, safe, walletConnect } from "wagmi/connectors";
 import { getDefaultConfig } from "connectkit";
+import { configuredChain, configuredChainId } from "../lib/chain.js";
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
 
@@ -34,11 +34,13 @@ const rpc3 = import.meta.env.VITE_BASE_RPC_URL_3;
 // only the wallet-side fallback for chain reads inside the connector layer.
 const primaryRpc = rpc1 ?? rpc2 ?? rpc3 ?? "https://mainnet.base.org";
 
+const appChain = configuredChain();
+
 export const wagmiConfig = createConfig(
   getDefaultConfig({
-    chains: [base],
+    chains: [appChain],
     transports: {
-      [base.id]: http(primaryRpc),
+      [appChain.id]: http(primaryRpc),
     },
     connectors: [
       injected({ shimDisconnect: true }),
@@ -68,4 +70,4 @@ export const wagmiConfig = createConfig(
   }),
 );
 
-export const CHAIN_ID_BASE = base.id;
+export const CHAIN_ID_BASE = configuredChainId();

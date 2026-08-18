@@ -7,6 +7,7 @@
 import { ConnectKitButton } from "connectkit";
 import {
   CHAIN_ID_BASE,
+  configuredChainLabel,
   useConnectedAccount as useAccount,
   useConnectedChainId as useChainId,
   useChainSwitch as useSwitchChain,
@@ -32,10 +33,10 @@ export function WalletPill(): JSX.Element {
         }}
         className="inline-flex items-center gap-1.5 rounded-md border border-risk-red/60 bg-risk-red/10 px-2.5 py-1 text-xs text-risk-red hover:bg-risk-red/20 focus:outline-none focus:ring-2 focus:ring-risk-red/50"
         data-testid="wallet-wrong-chain"
-        aria-label="Wrong chain — switch to Base"
+        aria-label={`Wrong chain — switch to ${configuredChainLabel()}`}
       >
         <span aria-hidden="true">⚠</span>
-        <span>Switch to Base</span>
+        <span>Switch to {configuredChainLabel()}</span>
       </button>
     );
   }

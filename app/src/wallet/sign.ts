@@ -35,15 +35,20 @@ interface SignAndAttachArgs {
 export async function signAndAttachAction(
   args: SignAndAttachArgs,
 ): Promise<SignAndAttachResult> {
-  const built = await args.sdk.buildAuthorization(args.action);
-  // The SDK's typedData is `unknown`; viem/wagmi's signTypedData parameter
-  // shape is the EIP-712 envelope. Trust the SDK to produce the right
-  // shape — it's the canonical source per §6.4 / §13.5.
+  const built = await args.sdk.buildTransaction(args.action);
+  // Prefer typed data from the same assembly that produced the digest so
+  // chain advancement between build and attach cannot QuoteDrift.
+  const typedData =
+    "typedData" in built && built.typedData
+      ? built.typedData
+      : (await args.sdk.buildAuthorization(args.action)).typedData;
   const signature = (await wagmiSignTypedData(wagmiConfig, {
     account: undefined as unknown as Address,
-    ...(built.typedData as object),
+    ...(typedData as object),
   } as Parameters<typeof wagmiSignTypedData>[1])) as Hex;
-  return args.sdk.attachSignature(args.action, signature, built.digest);
+  return args.sdk.attachSignature(args.action, signature, built.digest, {
+    pinnedBlockNumber: built.pinnedBlockNumber,
+  });
 }
 
 /** Broadcast a signed action's calldata via the connected wallet. Kept inside

@@ -158,6 +158,8 @@ export interface WstdiemSdk {
     data: Hex;
     value: bigint;
     digest: ActionDigest;
+    pinnedBlockNumber: BlockNumber;
+    typedData: unknown;
   }>;
   /**
    * PR-17 Gap 1 closure: splice the wallet signature into the calldata produced
