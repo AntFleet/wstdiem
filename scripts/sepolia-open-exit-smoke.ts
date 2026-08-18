@@ -56,39 +56,39 @@ const OWNER = env(
   "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
 ) as Address;
 
-// Base Sepolia REDEPLOY 2026-07-20 (post-EIP-170-refactor, PRs #9/#10/#11).
-// Supersedes the 2026-07-12 addresses. Canonical source: script/v2/configs/base-sepolia.json.
+// Base Sepolia REDEPLOY 2026-08-18 (issue #13 open-equity fix, PR #14).
+// Canonical source: script/v2/configs/base-sepolia.json.
 const CONTRACTS = {
-  loopRegistry: env("LOOP_REGISTRY", "0xB8FD5714364Ee179b71495A3F484f9A720d34E22"),
-  loopFingerprintRegistry: env("LOOP_FINGERPRINT_REGISTRY", "0x747F481c2AC4c6e7f080DcbDc549e8FA29E24C70"),
-  loopAuthorization: env("LOOP_AUTHORIZATION", "0xA001863898Eb6B2F8fa4cc28aB934762426ceAa8"),
-  loopForceExitAuthorizer: env("LOOP_FORCE_EXIT_AUTHORIZER", "0x14776F4e0edF5965Bf2675F557b833A49a623bF8"),
-  loopExecutorV2: env("LOOP_EXECUTOR_V2", "0xFAcecd40649F4cdDE70410DFFd5AdCAcE50E3c4B"),
-  loopForceExitExecutor: env("LOOP_FORCE_EXIT_EXECUTOR", "0x6D651b6689C37d4E88A2710Dd6E22a017C489620"),
-  loopAnchorRegistry: env("LOOP_ANCHOR_REGISTRY", "0xDC0ec9885c06a8F78085472Dc1f8Fe7FFbD0d53F"),
-  loopRiskOracleAdapter: env("LOOP_RISK_ORACLE_ADAPTER", "0x7CDa31cbd921F18FAaE9d747F53c10d58FBa1013"),
-  loopFeeRouter: env("LOOP_FEE_ROUTER", "0x9c5eF7981F583eeb2b161FCC90b3B13969E76779"),
-  emergencyGuardian: env("EMERGENCY_GUARDIAN", "0x5A487F12F0225533Ad841FEc299F9426D4964fC2"),
+  loopRegistry: env("LOOP_REGISTRY", "0xc8E01e82072d94Fb6601863e3ff2A286536e7Af4"),
+  loopFingerprintRegistry: env("LOOP_FINGERPRINT_REGISTRY", "0x0883d68a029Cb54d4e1aEffb1aBD32cee21FdDeE"),
+  loopAuthorization: env("LOOP_AUTHORIZATION", "0x6EFDe5632C9e79187B3Ed81ce84D0b17844ceAd6"),
+  loopForceExitAuthorizer: env("LOOP_FORCE_EXIT_AUTHORIZER", "0xC002b930D0671f4339A69D719262368f04A14a88"),
+  loopExecutorV2: env("LOOP_EXECUTOR_V2", "0xAbC32169efDe28BadA20417120CEAF6Ea93d3F88"),
+  loopForceExitExecutor: env("LOOP_FORCE_EXIT_EXECUTOR", "0xc8AC6e03eF49c085415174e7675A98757A29CFE7"),
+  loopAnchorRegistry: env("LOOP_ANCHOR_REGISTRY", "0x9EF8A248B800eB9c05273b9293fcF3B38D3b6962"),
+  loopRiskOracleAdapter: env("LOOP_RISK_ORACLE_ADAPTER", "0x1c2164ddA6431042fE3F99c0C6fA3d4962345f55"),
+  loopFeeRouter: env("LOOP_FEE_ROUTER", "0xeb4a99445846B6d659bB48974a17250B1179c1c9"),
+  emergencyGuardian: env("EMERGENCY_GUARDIAN", "0x5BC7Ce9952228c864Ef5d7F73Dc87723afc0BA09"),
 } as Record<string, Address>;
 
 const MARKET_ID = env(
   "MARKET_ID",
-  "0xa4739a27c01f9ec2f88846ae1d0c59636a0a409a50080fef4548d41245b8cdda",
+  "0x46b88a11004838ff6d82ee50edf44a9da4058e2e507f6970c9273cd2068a9c77",
 ) as Hex;
-const DIEM = env("DIEM", "0xe4938C8514eA2825Aab6B95bDC4f82b664ADE523") as Address;
-const WST = env("WST", "0xe7088BAd6CDD0355f30CC20c4962918E63B289B6") as Address;
-const MORPHO = env("MORPHO", "0x6cD9F25E78341F175d67599f02e556829DA16f7B") as Address;
+const DIEM = env("DIEM", "0x39b1cEe2B36006c04052C6703d48A42cF7Bbb631") as Address;
+const WST = env("WST", "0xD9eA959acD3dB456a676D31E8b8ddf9d6aD3416c") as Address;
+const MORPHO = env("MORPHO", "0x02e41010AB97b65E4a84D22F3B64454576c25E88") as Address;
 
 const BUNDLE = {
   marketId: MARKET_ID,
   morpho: MORPHO,
-  vault: env("WST_DIEM_VAULT", "0x57e24553391517057aC8fFbc539f50137654276F") as Address,
+  vault: env("WST_DIEM_VAULT", "0xD5e6B54ACe4a06205797C45F26B2061461F9De39") as Address,
   loanToken: DIEM,
   collateralToken: WST,
-  uniswapV3FlashPool: env("UNIV3_FLASH_POOL", "0xCFb87BEDE5A17a3D9b16601723D3a2070AF8Ea31") as Address,
-  sequencerUptimeFeed: env("SEQUENCER_FEED", "0x696B4c107D4f2F1902Cc13F370FeFB33248bE5C6") as Address,
-  chainlinkFeed: env("CHAINLINK_FEED", "0xe2e76617020aEd41D2234b2F345B9AA4dba2756F") as Address,
-  curvePool: env("CURVE_POOL", "0xc2D13DCce20dCDeB5305aE2AC421B4e6271D56E3") as Address,
+  uniswapV3FlashPool: env("UNIV3_FLASH_POOL", "0x03e8A48F0B7F3E31508058869f5C28786fa44Df4") as Address,
+  sequencerUptimeFeed: env("SEQUENCER_FEED", "0x31fd4B43013aF36813E80Cb73f36398E6042AcC8") as Address,
+  chainlinkFeed: env("CHAINLINK_FEED", "0x2268c8Cfeba80b9583700fB31EAE42f5a56E7B65") as Address,
+  curvePool: env("CURVE_POOL", "0xDe15993b8256A08D4a8b683d51D74F8da3D93751") as Address,
 };
 
 // registryVersion + registryMerkleRoot are deployment-specific and the Phase C
@@ -106,7 +106,7 @@ const LOOP_ERROR_NAMES = [
   "ReentrantCallback","InvalidCallbackContext","ActionContextAlreadyArmed","ConfigIntegrityFailure",
   "MorphoEvidenceMissing","HealthIndeterminate","DebtNotReduced","HealthFactorBoundFailure",
   "LiquidationDistanceBoundFailure","UtilizationImpactExceeded","LeverageBoundFailure",
-  "VaultDepositShortfall","BorrowedDiemOutOfBand","CurveSlippageExceeded","CurveLiquidityInsufficient",
+  "VaultDepositShortfall","ZeroEquityCollateral","BorrowedDiemOutOfBand","CurveSlippageExceeded","CurveLiquidityInsufficient",
   "CurveShareExceeded","InvalidSignature","MevWaiverMissing","DeadlineExceeded","DeadlineExceedsBound",
   "QuoteStale","ExecutionKindMismatch","CallerNotAllowed","ExecutorMismatch","Eip1271PreimageNotAttested",
   "NonceAlreadyUsed","DigestTypeMismatch","RebalanceModeAmbiguous","ConfigMutationOutsideAtomicGate",
@@ -279,12 +279,14 @@ async function main() {
   };
 
   console.log("\n=== OPEN: buildAuthorization ===");
-  const openAuth = await sdk.buildAuthorization(openAction as any);
-  console.log(`digest=${openAuth.digest}`);
-  console.log(`typedData.types present? ${(openAuth.typedData as any)?.types !== undefined}`);
+  const openBuilt = await sdk.buildTransaction(openAction as any);
+  console.log(`digest=${openBuilt.digest}`);
+  console.log(`pinnedBlock=${openBuilt.pinnedBlockNumber}`);
 
-  const openSig = await account.sign({ hash: openAuth.digest as Hex });
-  const openTx = await sdk.attachSignature(openAction as any, openSig, openAuth.digest);
+  const openSig = await account.sign({ hash: openBuilt.digest as Hex });
+  const openTx = await sdk.attachSignature(openAction as any, openSig, openBuilt.digest, {
+    pinnedBlockNumber: openBuilt.pinnedBlockNumber,
+  });
   console.log(`executeOpen -> to=${openTx.to} dataLen=${(openTx.data as string).length}`);
 
   console.log("\n=== OPEN: simulate (eth_call from owner) ===");
@@ -365,10 +367,13 @@ async function main() {
   };
 
   console.log("=== EXIT: buildAuthorization ===");
-  const exitAuth = await sdk.buildAuthorization(exitAction as any);
-  console.log(`digest=${exitAuth.digest}`);
-  const exitSig = await account.sign({ hash: exitAuth.digest as Hex });
-  const exitTx = await sdk.attachSignature(exitAction as any, exitSig, exitAuth.digest);
+  const exitBuilt = await sdk.buildTransaction(exitAction as any);
+  console.log(`digest=${exitBuilt.digest}`);
+  console.log(`pinnedBlock=${exitBuilt.pinnedBlockNumber}`);
+  const exitSig = await account.sign({ hash: exitBuilt.digest as Hex });
+  const exitTx = await sdk.attachSignature(exitAction as any, exitSig, exitBuilt.digest, {
+    pinnedBlockNumber: exitBuilt.pinnedBlockNumber,
+  });
   console.log(`executeExit -> to=${exitTx.to}`);
 
   console.log("=== EXIT: simulate ===");
