@@ -4,8 +4,8 @@
   "_comment": "Base Sepolia has no real Morpho / wstDIEM vault / Curve / Uniswap / Chainlink to point at, so the beta runs against MOCK external protocols. Deploy them with `forge script script/v2/DeployMocks.s.sol:DeployMocks` (see that file's header). The mock/core addresses below are FILLED FROM the DeployMocks console output at deploy time. Do NOT run the canonical `Deploy.s.sol` against this file — DeployMocks bootstraps its own mock venues and fingerprints. Placeholder 0x2000.../0x3000... values are kept only as valid-shaped defaults and MUST be overwritten with the DeployMocks output before the addresses are relied upon.",
   "_deployMocks": true,
   "_deployment": {
-    "_comment": "LIVE mock deploy via DeployMocksSepolia.s.sol. REDEPLOYED 2026-08-18 (Phase B of the issue #13 open-equity fix, PR #14). 52 txs mined blocks 45632710–45632788. Fingerprints queued; OPEN/EXIT gates stay false until Phase C applyFingerprints() at or after block 45633088 (300-block Sepolia timelock). Registry owner is the bootstrapper until Phase C. The 2026-07-20 deployment is superseded below.",
-    "status": "phase-b-queued",
+    "_comment": "LIVE mock deploy via DeployMocksSepolia.s.sol. REDEPLOYED 2026-08-18 for issue #13 (PR #14). Phase B queued fingerprints at block 45632788. Phase C applyFingerprints at 45633129–45633131 (registryVersion 2), acceptOwnership at 45633136, spend allowlist + closeBootstrap at 45633138–45633140. OPEN+EXIT gates validate true. Owner 0xb418…b96A holds 1000e18 DIEM+wstDIEM and max-approved both to executorV2.",
+    "status": "live",
     "deployer": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "governance": "0xb41891318Be43D2A966f574BaFC52D0a501Db96A",
     "bootstrapper": "0xd7D6063826655470FfC0ec755C18f79529a74015",
@@ -15,6 +15,10 @@
     "fingerprintApplyBlock": 45633088,
     "registryTimelockBlocks": 300,
     "registryVersionAtPhase1": 1,
+    "fingerprintsAppliedAtBlock": 45633129,
+    "registryVersionAtPhase2": 2,
+    "registryOwnershipHandoff": "complete",
+    "registryOwnershipAcceptedAtBlock": 45633136,
     "rpc": "https://base-sepolia-rpc.publicnode.com",
     "core": {
       "registry": "0xc8E01e82072d94Fb6601863e3ff2A286536e7Af4",
