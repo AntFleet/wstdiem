@@ -24,9 +24,9 @@ import {MockDeploymentKit} from "./MockDeploymentKit.sol";
 ///             --sig "run()" --rpc-url <sepolia> --private-key <deployer> --broadcast
 ///         Deploys mocks + core, transfers registry ownership to the bootstrapper, and queues the six
 ///         fingerprints atomically. Logs the bootstrapper + registry addresses and the earliest apply
-///         block. Opens are rejected until the fingerprints are applied after REGISTRY_TIMELOCK_BLOCKS.
+///         block. Opens are rejected until the fingerprints are applied after registryTimelockBlocks().
 ///
-///         Phase 2 (after ~130_000 blocks, ~3 days):
+///         Phase 2 (after registryTimelockBlocks(); 300 on Base Sepolia, ~10 min):
 ///           WSTDIEM_BOOTSTRAPPER=<addr> WSTDIEM_MOCK_GOVERNANCE=<addr> \
 ///           forge script script/v2/DeployMocksSepolia.s.sol:DeployMocksSepolia \
 ///             --sig "applyFingerprints()" --rpc-url <sepolia> --private-key <deployer> --broadcast
@@ -78,7 +78,7 @@ contract DeployMocksSepolia is Script, MockDeploymentKit {
         bootstrapper.queueAll();
         vm.stopBroadcast();
 
-        uint256 applyBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        uint256 applyBlock = block.number + registry.registryTimelockBlocks();
 
         console2.log("== wstDIEM mock SEPOLIA deploy (phase 1: deploy + queue) ==");
         console2.log("chainId", config.chainId);
@@ -119,7 +119,7 @@ contract DeployMocksSepolia is Script, MockDeploymentKit {
     }
 
     /// @notice Phase 2: apply queued fingerprints, hand ownership to governance, assert gates. Reverts
-    ///         with FingerprintTimelockNotElapsed if run before REGISTRY_TIMELOCK_BLOCKS have passed.
+    ///         with FingerprintTimelockNotElapsed if run before registryTimelockBlocks() have passed.
     function applyFingerprints() external {
         address deployer = vm.envOr("WSTDIEM_MOCK_DEPLOYER", msg.sender);
         MockFingerprintBootstrapper bootstrapper =

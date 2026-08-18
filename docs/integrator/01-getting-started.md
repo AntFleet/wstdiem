@@ -80,6 +80,7 @@ const openAction: OpenAction = {
   
   // Bounds (parsed from user input)
   bounds: {
+    equityCollateral: 100n * 10n ** 18n,
     minWstDiemReceived: 90n, // 90% minimum received
     minBorrowedDiem: 100n * 10n ** 18n,
     maxBorrowedDiem: 200n * 10n ** 18n,

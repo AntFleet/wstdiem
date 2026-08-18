@@ -66,8 +66,8 @@
   },
   "OPEN_BOUNDS_TYPEHASH": {
     "name": "OPEN_BOUNDS_TYPEHASH",
-    "preimage": "OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
-    "hash": "0xf4a8770bd919980654184404a437bebdb8ca2ecb00331a500c5c87357760018d"
+    "preimage": "OpenBounds(uint256 equityCollateral,uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
+    "hash": "0x06b5a805944e07aa2d4947d1716f46d0ad86cc069d1b02c9604645ec6e29220e"
   },
   "REBALANCE_BOUNDS_TYPEHASH": {
     "name": "REBALANCE_BOUNDS_TYPEHASH",
@@ -96,8 +96,8 @@
   },
   "OPEN_TYPEHASH": {
     "name": "OPEN_TYPEHASH",
-    "preimage": "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
-    "hash": "0x843aa42882f702f45a618dbc1cca689093a1f354b5a514aea561343c7b06e884"
+    "preimage": "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)OpenBounds(uint256 equityCollateral,uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)",
+    "hash": "0x2154d61e72158a93c654446e3e51d3c75abc3ba726f2370dbcd7110a331797d2"
   },
   "REBALANCE_TYPEHASH": {
     "name": "REBALANCE_TYPEHASH",

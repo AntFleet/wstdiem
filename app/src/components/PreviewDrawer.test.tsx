@@ -31,6 +31,7 @@ function buildPreview(
       evidenceBundleHash:
         "0x6666666666666666666666666666666666666666666666666666666666666666" as never,
       bounds: {
+        equityCollateral: 1_000_000_000_000_000_000n,
         minWstDiemReceived: 0n,
         minBorrowedDiem: 0n,
         maxBorrowedDiem: 1000n,

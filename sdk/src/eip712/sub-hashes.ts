@@ -308,6 +308,7 @@ export function hashMarketParams(p: MorphoMarketParams): Hex {
 }
 
 export interface OpenBoundsInputs {
+  equityCollateral: bigint;
   minWstDiemReceived: bigint;
   minBorrowedDiem: bigint;
   maxBorrowedDiem: bigint;
@@ -321,13 +322,14 @@ export interface OpenBoundsInputs {
 }
 
 const OPEN_BOUNDS_PARAMS = parseAbiParameters(
-  "bytes32, uint256, uint256, uint256, uint16, uint16, uint16, uint256, uint16, uint16, bytes32",
+  "bytes32, uint256, uint256, uint256, uint256, uint16, uint16, uint16, uint256, uint16, uint16, bytes32",
 );
 
 export function hashOpenBounds(b: OpenBoundsInputs): Hex {
   return keccak256(
     encodeAbiParameters(OPEN_BOUNDS_PARAMS, [
       OPEN_BOUNDS_TYPEHASH,
+      b.equityCollateral,
       b.minWstDiemReceived,
       b.minBorrowedDiem,
       b.maxBorrowedDiem,

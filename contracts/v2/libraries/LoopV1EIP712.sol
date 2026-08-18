@@ -43,6 +43,7 @@ library LoopV1EIP712 {
     }
 
     struct OpenBounds {
+        uint256 equityCollateral;
         uint256 minWstDiemReceived;
         uint256 minBorrowedDiem;
         uint256 maxBorrowedDiem;
@@ -200,7 +201,7 @@ library LoopV1EIP712 {
     );
 
     bytes32 internal constant OPEN_BOUNDS_TYPEHASH = keccak256(
-        "OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)"
+        "OpenBounds(uint256 equityCollateral,uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)"
     );
     bytes32 internal constant REBALANCE_BOUNDS_TYPEHASH = keccak256(
         "RebalanceBounds(uint16 targetLeverageBps,uint16 targetLeverageToleranceBps,uint256 minPostHealthFactor,uint16 minLiquidationDistanceBps,uint256 maxDebtIncrease,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)"
@@ -222,7 +223,7 @@ library LoopV1EIP712 {
     // Derived via viem's encodeType (the EIP-712 reference implementation) so a
     // wallet's eth_signTypedData_v4 reproduces hashOpen/... byte-for-byte.
     bytes32 internal constant OPEN_TYPEHASH = keccak256(
-        "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)OpenBounds(uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)"
+        "Open(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,OpenBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)OpenBounds(uint256 equityCollateral,uint256 minWstDiemReceived,uint256 minBorrowedDiem,uint256 maxBorrowedDiem,uint16 maxSlippageBps,uint16 maxPriceImpactBps,uint16 maxLeverageBps,uint256 minHealthFactor,uint16 minLiquidationDistanceBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)"
     );
     bytes32 internal constant REBALANCE_TYPEHASH = keccak256(
         "Rebalance(ActionIdentity identity,Freshness freshness,uint8 executionKind,uint8 mevProtectionMode,uint8 mevWaiverBits,MorphoMarketParams marketParams,RebalanceBounds bounds,DigestHashes hashes)ActionIdentity(address owner,uint256 chainId,address verifyingContract,bytes32 market,address executor,uint256 registryVersion,bytes32 registryMerkleRoot,uint64 policyId,uint248 nonceSlot,uint8 nonceBit)DigestHashes(bytes32 quoteHash,bytes32 spenderListHash,bytes32 allowanceScheduleHash,bytes32 feeCapHash,bytes32 evidenceBundleHash)Freshness(uint256 deadline,uint256 quoteBlockNumber,uint256 maxQuoteAgeBlocks,uint16 maxQuoteDeviationBps)MorphoMarketParams(address loanToken,address collateralToken,address oracle,address irm,uint256 lltv)RebalanceBounds(uint16 targetLeverageBps,uint16 targetLeverageToleranceBps,uint256 minPostHealthFactor,uint16 minLiquidationDistanceBps,uint256 maxDebtIncrease,uint256 maxCollateralSold,uint16 maxSlippageBps,uint16 maxCurvePositionShareBps,uint16 maxMorphoUtilizationImpactBps,bytes32 feeCapsHash)"

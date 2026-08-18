@@ -214,6 +214,7 @@ library LoopV1Hashing {
         return keccak256(
             abi.encode(
                 LoopV1EIP712.OPEN_BOUNDS_TYPEHASH,
+                bounds.equityCollateral,
                 bounds.minWstDiemReceived,
                 bounds.minBorrowedDiem,
                 bounds.maxBorrowedDiem,

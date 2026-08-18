@@ -30,6 +30,7 @@ interface OpenAction extends CommonActionEnvelope {
 }
 
 interface OpenBounds {
+  equityCollateral: bigint;                // wstDIEM equity the owner supplies (wei)
   minWstDiemReceived: bigint;              // Minimum wstDIEM received (wei)
   minBorrowedDiem: bigint;                 // Minimum DIEM borrowed (wei)
   maxBorrowedDiem: bigint;                 // Maximum DIEM borrowed (wei)

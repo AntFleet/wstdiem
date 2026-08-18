@@ -77,6 +77,7 @@ contract Eip712WalletParityTest is Test {
                 lltv: 800000000000000000
             }),
             bounds: LoopV1EIP712.OpenBounds({
+                equityCollateral: 5000,
                 minWstDiemReceived: 1000,
                 minBorrowedDiem: 100,
                 maxBorrowedDiem: 10000,

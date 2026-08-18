@@ -87,6 +87,7 @@ library LoopV1Errors {
     error UtilizationImpactExceeded(); // 0xdc92e56d: Morpho utilization impact above bound.
     error CurveShareExceeded(); // 0x04b17402: Curve route share above bound.
     error VaultDepositShortfall(); // 0x8717c893: vault.deposit minted below signed floor.
+    error ZeroEquityCollateral(); // 0xaf37f89b: Open signed equityCollateral is zero.
     error ThirdPartyRepayNotAccepted(); // 0x3000eb40: owner did not opt in to third-party repay.
     error AuditGateClosed(); // 0x3fef151f: Protocol Audit Gate v2 closed.
     error PausedAction(); // 0xa59392f5: action blocked by valid pause row.

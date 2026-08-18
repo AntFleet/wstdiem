@@ -242,6 +242,7 @@ abstract contract BaseMainnetForkSetup is Test, DeployHarness, RegistryBatchHelp
         action.executionKind = LoopV1Types.ExecutionKind.KEEPER_PERMISSIONLESS;
         action.mevProtectionMode = LoopV1Types.MevProtectionMode.PRIVATE_BUILDER;
         action.marketParams = venues.params;
+        action.bounds.equityCollateral = 1 ether;
         action.bounds.minWstDiemReceived = 0.01 ether;
         action.bounds.minBorrowedDiem = 1e6;
         action.bounds.maxBorrowedDiem = 2e6;

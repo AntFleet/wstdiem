@@ -136,6 +136,7 @@ const openTemplate = {
   mevWaiverBits: 0,
   evidenceBundleHash: ("0x" + "00".repeat(32)) as never,
   bounds: {
+    equityCollateral: 100n,
     minWstDiemReceived: 100n,
     minBorrowedDiem: 10n,
     maxBorrowedDiem: 1000n,

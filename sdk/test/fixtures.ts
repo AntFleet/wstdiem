@@ -30,7 +30,7 @@ export const PINNED_TYPEHASHES = {
   ARMING_CONTEXT_TYPEHASH:
     "0x3b02c9a9cfd659b4509f2222870d5e92345f7e710083fe4e21ddb47ae5368a02",
   OPEN_BOUNDS_TYPEHASH:
-    "0xf4a8770bd919980654184404a437bebdb8ca2ecb00331a500c5c87357760018d",
+    "0x06b5a805944e07aa2d4947d1716f46d0ad86cc069d1b02c9604645ec6e29220e",
   REBALANCE_BOUNDS_TYPEHASH:
     "0x6432e35189b576042eaadad5755f566c6d7c5bc8fc5f1fb946af9894ef76a246",
   EXIT_BOUNDS_TYPEHASH:
@@ -46,7 +46,7 @@ export const PINNED_TYPEHASHES = {
   // Phase A when MorphoMarketParams gained a typehash and the action encodeType
   // strings gained their referenced-struct suffixes.
   OPEN_TYPEHASH:
-    "0x843aa42882f702f45a618dbc1cca689093a1f354b5a514aea561343c7b06e884",
+    "0x2154d61e72158a93c654446e3e51d3c75abc3ba726f2370dbcd7110a331797d2",
   REBALANCE_TYPEHASH:
     "0x71e9d21879e5766f0db9cd274146777299cf154947314e92cc1ff899095cfe5c",
   EXIT_TYPEHASH:
@@ -145,6 +145,7 @@ export const PINNED_ERROR_SELECTORS = {
   UtilizationImpactExceeded: "0xdc92e56d",
   CurveShareExceeded: "0x04b17402",
   VaultDepositShortfall: "0x8717c893",
+  ZeroEquityCollateral: "0xaf37f89b",
   ThirdPartyRepayNotAccepted: "0x3000eb40",
   AuditGateClosed: "0x3fef151f",
   PausedAction: "0xa59392f5",

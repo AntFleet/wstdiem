@@ -126,7 +126,7 @@ contract FoundationTest is TestHelpers, Test {
         }
 
         assertEq(LoopV1Types.TX_REENTRY_GUARD_SLOT, keccak256("wstdiem.tx.reentry"));
-        assertEq(_allErrorSelectors().length, 116);
+        assertEq(_allErrorSelectors().length, 117);
         new FoundationEventProbe().emitAll();
     }
 
@@ -227,7 +227,7 @@ contract FoundationTest is TestHelpers, Test {
     }
 
     function testAllErrorSelectorsReachable() public pure {
-        bytes4[116] memory selectors = _allErrorSelectors();
+        bytes4[117] memory selectors = _allErrorSelectors();
         for (uint256 i = 0; i < selectors.length; i++) {
             assertTrue(selectors[i] != bytes4(0));
         }
@@ -237,7 +237,7 @@ contract FoundationTest is TestHelpers, Test {
     ///   this test asserts pairwise distinctness across the canonical selector set so a future error addition
     ///   colliding with an existing one fails the build instead of silently routing reverts wrong.
     function testAllErrorSelectorsPairwiseDistinct() public pure {
-        bytes4[116] memory selectors = _allErrorSelectors();
+        bytes4[117] memory selectors = _allErrorSelectors();
         for (uint256 i = 0; i < selectors.length; i++) {
             for (uint256 j = i + 1; j < selectors.length; j++) {
                 assertTrue(selectors[i] != selectors[j], "error selector collision");
@@ -553,6 +553,29 @@ contract FoundationTest is TestHelpers, Test {
         vm.stopPrank();
     }
 
+    function testSepoliaTimelockIsThreeHundredBlocks() public {
+        LoopRegistry registry = deployRegistry();
+        assertEq(registry.registryTimelockBlocks(), 130_000, "non-sepolia keeps mainnet delay");
+
+        vm.chainId(84532);
+        assertEq(registry.registryTimelockBlocks(), 300, "base sepolia is shortened");
+
+        vm.startPrank(OWNER);
+        registry.closeBootstrap();
+        ILoopRegistry.BatchOp[] memory ops = new ILoopRegistry.BatchOp[](1);
+        ops[0] = _opExecutor(uint8(LoopV1Types.PrimaryType.OPEN), address(0xABCD));
+        uint256 start = block.number;
+        registry.batchUpdate(ops, 1, bytes32(uint256(11)));
+        (,,, uint256 effectiveBlock,) = registry.pendingBatchUpdate();
+        assertEq(effectiveBlock, start + 300, "queued apply uses sepolia delay");
+        vm.expectRevert(LoopV1Errors.FingerprintTimelockNotElapsed.selector);
+        registry.applyBatchUpdate(ops);
+        vm.roll(effectiveBlock);
+        registry.applyBatchUpdate(ops);
+        assertEq(registry.registryVersion(), 1);
+        vm.stopPrank();
+    }
+
     function testCloseBootstrapIsOneWay() public {
         LoopRegistry registry = deployRegistry();
         vm.startPrank(OWNER);
@@ -690,7 +713,7 @@ contract FoundationTest is TestHelpers, Test {
         return uint16(1) << uint8(bit);
     }
 
-    function _allErrorSelectors() private pure returns (bytes4[116] memory selectors) {
+    function _allErrorSelectors() private pure returns (bytes4[117] memory selectors) {
         selectors[0] = LoopV1Errors.WrongChain.selector;
         selectors[1] = LoopV1Errors.RegistryVersionMismatch.selector;
         selectors[2] = LoopV1Errors.RegistryMerkleRootMismatch.selector;
@@ -807,5 +830,6 @@ contract FoundationTest is TestHelpers, Test {
         selectors[113] = LoopV1Errors.ConfigMutationOutsideAtomicGate.selector;
         selectors[114] = LoopV1Errors.HarvestAuthorityOnly.selector;
         selectors[115] = LoopV1Errors.OnlyAuthorization.selector;
+        selectors[116] = LoopV1Errors.ZeroEquityCollateral.selector;
     }
 }

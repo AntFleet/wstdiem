@@ -98,6 +98,7 @@ export function computeOpenDigest(inputs: OpenDigestInputs): ActionDigest {
     maxQuoteDeviationBps: action.maxQuoteDeviationBps,
   });
   const boundsHash = hashOpenBounds({
+    equityCollateral: action.bounds.equityCollateral,
     minWstDiemReceived: action.bounds.minWstDiemReceived,
     minBorrowedDiem: action.bounds.minBorrowedDiem,
     maxBorrowedDiem: action.bounds.maxBorrowedDiem,

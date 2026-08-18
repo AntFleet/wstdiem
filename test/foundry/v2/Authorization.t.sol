@@ -511,6 +511,7 @@ contract AuthorizationTest is RegistryBatchHelpers, Test {
         action.mevProtectionMode = LoopV1Types.MevProtectionMode.PRIVATE_BUILDER;
         action.mevWaiverBits = 0;
         action.marketParams = params;
+        action.bounds.equityCollateral = 1 ether;
         action.bounds.minBorrowedDiem = 5 ether;
         action.bounds.maxBorrowedDiem = 8 ether;
         action.hashes.evidenceBundleHash = _emptyEvidenceHash(owner);

@@ -1285,6 +1285,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
           ...common,
           primaryType: "Open",
           bounds: {
+            equityCollateral: BigInt(bounds.equityCollateral as bigint),
             minWstDiemReceived: BigInt(bounds.minWstDiemReceived as bigint),
             minBorrowedDiem: BigInt(bounds.minBorrowedDiem as bigint),
             maxBorrowedDiem: BigInt(bounds.maxBorrowedDiem as bigint),
@@ -1933,6 +1934,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
     const expectedShares = await vault.convertToShares(notionalBorrow);
     const minWstDiemReceived = (expectedShares * (BPS_DENOM - slip)) / BPS_DENOM;
     return {
+      equityCollateral: input.collateralAmount,
       minWstDiemReceived,
       minBorrowedDiem,
       maxBorrowedDiem,
@@ -2164,6 +2166,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
         ...action,
         primaryType: "Open",
         bounds: {
+          equityCollateral: 0n,
           minWstDiemReceived: 0n,
           minBorrowedDiem: 0n,
           maxBorrowedDiem: action.bounds.maxDebtIncrease,
@@ -2424,6 +2427,7 @@ export class LiveWstdiemSdk implements WstdiemSdk {
       mevWaiverBits: action.mevWaiverBits,
       marketParams: this.marketParamsCalldata(params),
       bounds: {
+        equityCollateral: action.bounds.equityCollateral,
         minWstDiemReceived: action.bounds.minWstDiemReceived,
         minBorrowedDiem: action.bounds.minBorrowedDiem,
         maxBorrowedDiem: action.bounds.maxBorrowedDiem,

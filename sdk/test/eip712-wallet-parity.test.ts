@@ -247,6 +247,7 @@ describe("EIP-712 shared cross-language fixture (contract == viem == SDK)", () =
       mevWaiverBits: Number(m.mevWaiverBits),
       evidenceBundleHash: asBytes32(m.hashes.evidenceBundleHash),
       bounds: {
+        equityCollateral: BigInt(m.bounds.equityCollateral),
         minWstDiemReceived: BigInt(m.bounds.minWstDiemReceived),
         minBorrowedDiem: BigInt(m.bounds.minBorrowedDiem),
         maxBorrowedDiem: BigInt(m.bounds.maxBorrowedDiem),
