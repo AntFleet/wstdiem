@@ -28,6 +28,36 @@ export function useErc20Allowance(
   });
 }
 
+const MINT_ABI = [
+  {
+    type: "function",
+    name: "mint",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+export function useMintTestToken() {
+  const write = useWriteContract();
+  const wait = useWaitForTransactionReceipt({ hash: write.data });
+  return {
+    mint: (token: Address, to: Address, amount: bigint) =>
+      write.writeContract({
+        address: token,
+        abi: MINT_ABI,
+        functionName: "mint",
+        args: [to, amount],
+      }),
+    isPending: write.isPending || wait.isLoading,
+    isSuccess: wait.isSuccess,
+    error: write.error ?? wait.error,
+  };
+}
+
 export function useApproveErc20() {
   const write = useWriteContract();
   const wait = useWaitForTransactionReceipt({ hash: write.data });
