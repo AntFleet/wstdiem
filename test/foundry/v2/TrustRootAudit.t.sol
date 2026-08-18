@@ -44,6 +44,9 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         executor = LoopExecutorV2(deployed.executorV2);
         riskOracle = LoopRiskOracleAdapter(deployed.riskOracleAdapter);
         market = config.market.id;
+        mocks.collateralToken.mint(owner, 1_000 ether);
+        vm.prank(owner);
+        mocks.collateralToken.approve(address(executor), type(uint256).max);
     }
 
     function testProductionReadinessPassesAfterBootstrap() public view {
@@ -251,6 +254,7 @@ contract TrustRootAuditTest is Test, MockDeploymentKit {
         action.executionKind = LoopV1Types.ExecutionKind.KEEPER_PERMISSIONLESS;
         action.mevProtectionMode = LoopV1Types.MevProtectionMode.PRIVATE_BUILDER;
         action.marketParams = _params();
+        action.bounds.equityCollateral = 50 ether;
         action.bounds.minWstDiemReceived = 1 ether;
         action.bounds.minBorrowedDiem = 1;
         action.bounds.maxBorrowedDiem = MAX_BORROW;

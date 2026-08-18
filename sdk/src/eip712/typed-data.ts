@@ -56,6 +56,7 @@ const DigestHashes = [
 ] as const;
 
 const OpenBounds = [
+  { name: "equityCollateral", type: "uint256" },
   { name: "minWstDiemReceived", type: "uint256" },
   { name: "minBorrowedDiem", type: "uint256" },
   { name: "maxBorrowedDiem", type: "uint256" },
@@ -282,6 +283,7 @@ export function buildActionTypedData(
           mevWaiverBits: action.mevWaiverBits,
           marketParams: marketParamsMessage(marketParams),
           bounds: {
+            equityCollateral: b.equityCollateral,
             minWstDiemReceived: b.minWstDiemReceived,
             minBorrowedDiem: b.minBorrowedDiem,
             maxBorrowedDiem: b.maxBorrowedDiem,

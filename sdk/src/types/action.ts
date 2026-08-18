@@ -58,6 +58,8 @@ export interface CommonActionEnvelope {
 }
 
 export interface OpenBounds {
+  /** wstDIEM equity the owner supplies; signed so a keeper cannot resize. */
+  equityCollateral: bigint;
   minWstDiemReceived: bigint;
   minBorrowedDiem: bigint;
   maxBorrowedDiem: bigint;

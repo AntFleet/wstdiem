@@ -105,6 +105,7 @@ export function buildExampleOpen(): OpenAction {
     ...commonEnvelope({ primaryType: "Open" }),
     primaryType: "Open",
     bounds: {
+      equityCollateral: 5_000n,
       minWstDiemReceived: 1_000n,
       minBorrowedDiem: 100n,
       maxBorrowedDiem: 10_000n,

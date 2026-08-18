@@ -74,6 +74,7 @@ export type FailClosedErrorName =
   | "UtilizationImpactExceeded"
   | "CurveShareExceeded"
   | "VaultDepositShortfall"
+  | "ZeroEquityCollateral"
   // Gates / pause
   | "AuditGateClosed"
   | "PausedAction"
@@ -202,6 +203,7 @@ const SEED: CanonicalErrorSeed[] = [
   { name: "UtilizationImpactExceeded", signature: "UtilizationImpactExceeded()", category: "economicBound", humanReadable: "Morpho utilization impact above bound", contractEmitted: true },
   { name: "CurveShareExceeded", signature: "CurveShareExceeded()", category: "economicBound", humanReadable: "Curve route share above bound", contractEmitted: true },
   { name: "VaultDepositShortfall", signature: "VaultDepositShortfall()", category: "economicBound", humanReadable: "vault.deposit minted below signed floor", contractEmitted: true },
+  { name: "ZeroEquityCollateral", signature: "ZeroEquityCollateral()", category: "economicBound", humanReadable: "Open signed equityCollateral is zero", contractEmitted: true },
   // Gates / pause
   { name: "AuditGateClosed", signature: "AuditGateClosed()", category: "gate", humanReadable: "Protocol Audit Gate v2 closed", contractEmitted: true },
   { name: "PausedAction", signature: "PausedAction()", category: "gate", humanReadable: "action blocked by valid pause row", contractEmitted: true },

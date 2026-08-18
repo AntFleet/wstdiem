@@ -72,6 +72,7 @@ abstract contract LoopExecutorBase is ILoopV1Events {
         bytes32 market;
         LoopV1Types.MorphoMarketParams params;
         uint256 flashAmount;
+        /// @dev OPEN: signed `equityCollateral`. REBALANCE leverage-up leaves this 0.
         uint256 supplyCollateralAssets;
         uint256 borrowAssets;
         uint256 repayAssets;

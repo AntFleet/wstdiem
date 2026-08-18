@@ -696,6 +696,7 @@ contract PB3FixRegressionTest is RegistryBatchHelpers, Test {
         action.executionKind = LoopV1Types.ExecutionKind.KEEPER_PERMISSIONLESS;
         action.mevProtectionMode = LoopV1Types.MevProtectionMode.PRIVATE_BUILDER;
         action.marketParams = params;
+        action.bounds.equityCollateral = 1 ether;
         action.bounds.minWstDiemReceived = 1 ether;
         action.bounds.maxBorrowedDiem = 1 ether;
         action.hashes.evidenceBundleHash = _emptyEvidenceHash(signer);

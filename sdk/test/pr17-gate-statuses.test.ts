@@ -197,6 +197,7 @@ const openTemplate = {
   mevWaiverBits: 0,
   evidenceBundleHash: ("0x" + "ef".repeat(32)) as never,
   bounds: {
+    equityCollateral: 1_000n,
     minWstDiemReceived: 1_000n,
     minBorrowedDiem: 500n,
     // PR-17 G-PM-4 fixture: maxBorrowedDiem > HIGH_RISK_THRESHOLD so the

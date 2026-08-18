@@ -153,6 +153,7 @@ contract LoopAuthorization is ILoopAuthorization, ILoopV1Events {
             msg.sender
         );
         LoopV1ActionValidation.requireMarketParams(registry, action.identity.market, action.marketParams);
+        LoopV1ActionValidation.validateOpenBounds(action.bounds);
         LoopV1ActionValidation.validateLiveStateBitmap(
             registry, action.identity.market, action.identity.owner, uint8(LoopV1Types.PrimaryType.OPEN), 1, 0
         );

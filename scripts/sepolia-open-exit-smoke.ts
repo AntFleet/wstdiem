@@ -251,7 +251,7 @@ async function main() {
 
   // ════════════════ OPEN ════════════════
   const collateralAmount = envBig("EQUITY_WEI", 1_000_000_000_000_000_000n); // default 1e18 (bounds sizing)
-  const lev = 20_000n; // 2.0x
+  const lev = envBig("LEV_BPS", 20_000n); // 2.0x default; tunable for sizing sweeps
   const slip = 50n;
   const notionalBorrow = (collateralAmount * (lev - BPS)) / BPS; // 1e18
   const maxBorrowedDiem = (notionalBorrow * (BPS + slip)) / BPS;  // 1.005e18
@@ -262,6 +262,7 @@ async function main() {
     ...commonEnvelope(openNonce, CONTRACTS.loopAuthorization, CONTRACTS.loopExecutorV2),
     primaryType: "Open",
     bounds: {
+      equityCollateral: collateralAmount,
       minWstDiemReceived: 500_000_000_000_000_000n, // 0.5e18 conservative floor (actual ~1.004e18)
       minBorrowedDiem,
       maxBorrowedDiem,

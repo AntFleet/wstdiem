@@ -8,6 +8,7 @@ import {LoopFingerprintRegistry} from "./LoopFingerprintRegistry.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
+import {LoopV1Timelock} from "./libraries/LoopV1Timelock.sol";
 import {LoopV1Types} from "./libraries/LoopV1Types.sol";
 
 /// @notice Phase B registry for digest-bound config, evidence sources, risk metadata, and PR-5 real bodies.
@@ -53,7 +54,10 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     uint8 public constant OP_SET_SUPPORTED_MARKET = 18;
     uint8 public constant OP_SET_FORCE_EXIT_BUFFER_BPS = 19;
 
-    uint256 internal constant REGISTRY_TIMELOCK_BLOCKS = 130_000;
+    /// @notice Queue delay in blocks. 130_000 on Base/mainnet; 300 on Base Sepolia.
+    function registryTimelockBlocks() public view returns (uint256) {
+        return LoopV1Timelock.blocks();
+    }
 
     /// @notice Config-integrity fingerprint subsystem (Lock E / I-71), split out under EIP-170. Bound
     ///         immutably: this core deploys it in its constructor, and it holds `core == this`. All
@@ -119,7 +123,7 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     bool public spendAllowlistEnforced;
 
     /// @dev While false, `batchUpdate` applies immediately (deploy/bootstrap). After
-    ///      `closeBootstrap()`, batches queue for REGISTRY_TIMELOCK_BLOCKS then `applyBatchUpdate`.
+    ///      `closeBootstrap()`, batches queue for registryTimelockBlocks() then `applyBatchUpdate`.
     bool public bootstrapClosed;
 
     struct PendingBatch {
@@ -262,7 +266,7 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
             return;
         }
         // Post-bootstrap: queue only; caller must re-supply identical ops to applyBatchUpdate.
-        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        uint256 effectiveBlock = block.number + LoopV1Timelock.blocks();
         pendingBatch = PendingBatch({
             opsHash: keccak256(abi.encode(ops)),
             nextVersion: nextVersion,
@@ -542,7 +546,7 @@ contract LoopRegistry is Ownable2Step, ILoopRegistry, ILoopV1Events {
     }
 
     function _queueRole(uint8 roleId, address next) private {
-        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        uint256 effectiveBlock = block.number + LoopV1Timelock.blocks();
         pendingRoles[roleId] = PendingRole(next, effectiveBlock);
         emit CriticalRoleUpdateQueued(roleId, next, effectiveBlock);
     }

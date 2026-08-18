@@ -52,6 +52,7 @@ const openAction = {
   market: market.id,
   primaryType: "Open",
   bounds: {
+    equityCollateral: userInput.wstDiemAmount,
     minWstDiemReceived: (userInput.wstDiemAmount * 99n) / 100n,
     minBorrowedDiem: 0n,
     maxBorrowedDiem: userInput.wstDiemAmount * userInput.leverageMultiple,

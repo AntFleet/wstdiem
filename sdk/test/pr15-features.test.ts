@@ -161,6 +161,7 @@ describe("PR-15: sourceAddress canonical-source cross-check (audit H-2)", () => 
     mevWaiverBits: 0,
     evidenceBundleHash: ("0x" + "ef".repeat(32)) as never,
     bounds: {
+      equityCollateral: 1_000n,
       minWstDiemReceived: 1_000n,
       minBorrowedDiem: 500n,
       maxBorrowedDiem: 1_000_000n,
@@ -362,6 +363,7 @@ describe("PR-15: attachSignature pinnedBlockNumber", () => {
       mevWaiverBits: 0,
       evidenceBundleHash: ("0x" + "ef".repeat(32)) as never,
       bounds: {
+        equityCollateral: 1_000n,
         minWstDiemReceived: 1_000n,
         minBorrowedDiem: 500n,
         maxBorrowedDiem: 1_000_000n,

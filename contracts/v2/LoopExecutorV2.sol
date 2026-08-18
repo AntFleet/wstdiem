@@ -56,7 +56,7 @@ contract LoopExecutorV2 is LoopExecutorBase {
         context.borrowAssets = action.bounds.maxBorrowedDiem;
         context.flashAmount = _flashPrincipalForBudget(action.identity.market, context.borrowAssets);
         context.useVaultDeposit = true;
-        context.supplyCollateralAssets = action.bounds.minWstDiemReceived;
+        context.supplyCollateralAssets = action.bounds.equityCollateral;
         context.minWstDiemReceived = action.bounds.minWstDiemReceived;
         context.minBorrowedDiem = action.bounds.minBorrowedDiem;
         context.maxBorrowedDiem = action.bounds.maxBorrowedDiem;
@@ -271,11 +271,19 @@ contract LoopExecutorV2 is LoopExecutorBase {
         override
         returns (LoopV1Types.LoopActionResult memory)
     {
-        uint256 collateralAssets = context.supplyCollateralAssets;
+        uint256 equity = context.supplyCollateralAssets;
+        if (equity != 0) {
+            _safeTransferFrom(context.params.collateralToken, context.owner, address(this), equity);
+        }
+        uint256 collateralAssets = equity;
         if (context.useVaultDeposit && context.flashAmount != 0) {
             address vault = loopRegistry.wstDiemVault(context.market);
             _approveExact(context.params.loanToken, vault, context.flashAmount, context.primaryType);
-            collateralAssets = IERC4626Minimal(vault).deposit(context.flashAmount, address(this));
+            uint256 minted = IERC4626Minimal(vault).deposit(context.flashAmount, address(this));
+            if (context.minWstDiemReceived != 0 && minted < context.minWstDiemReceived) {
+                revert LoopV1Errors.VaultDepositShortfall();
+            }
+            collateralAssets += minted;
         }
         if (collateralAssets != 0) {
             _safeTransfer(context.params.collateralToken, address(loopAuthorization), collateralAssets);

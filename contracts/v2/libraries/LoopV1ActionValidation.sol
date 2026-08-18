@@ -202,6 +202,10 @@ library LoopV1ActionValidation {
         revert LoopV1Errors.ConfigIntegrityFailure();
     }
 
+    function validateOpenBounds(LoopV1EIP712.OpenBounds calldata bounds) public pure {
+        if (bounds.equityCollateral == 0) revert LoopV1Errors.ZeroEquityCollateral();
+    }
+
     function requireMarketParams(
         ILoopRegistry registry,
         bytes32 market,

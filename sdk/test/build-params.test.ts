@@ -152,6 +152,7 @@ describe("buildOpenParams", () => {
     //                    = (2_000_000 * 98/100) * 9900/10000
     //                    = 1_960_000 * 9900/10000 = 1_940_400
     // (proves the vault conversion is applied, not a 1:1 DIEM→wstDIEM shortcut)
+    expect(action.bounds.equityCollateral).toBe(1_000_000n);
     expect(action.bounds.minWstDiemReceived).toBe(1_940_400n);
     expect(action.bounds.maxLeverageBps).toBe(30_000);
     expect(action.bounds.maxSlippageBps).toBe(100);

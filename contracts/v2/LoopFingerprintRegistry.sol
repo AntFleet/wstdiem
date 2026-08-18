@@ -6,6 +6,7 @@ import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ILoopRegistry} from "./interfaces/ILoopRegistry.sol";
 import {ILoopV1Events} from "./interfaces/ILoopV1Events.sol";
 import {LoopV1Errors} from "./libraries/LoopV1Errors.sol";
+import {LoopV1Timelock} from "./libraries/LoopV1Timelock.sol";
 import {LoopV1Types} from "./libraries/LoopV1Types.sol";
 
 interface IMorphoFingerprintReader {
@@ -79,7 +80,6 @@ contract LoopFingerprintRegistry is ILoopV1Events {
     uint256 internal constant WAD = 1e18;
     uint16 internal constant MAX_TOLERANCE_STEP_BPS = 50;
     uint256 internal constant SEQUENCER_GRACE_SECONDS = 3_600;
-    uint256 internal constant REGISTRY_TIMELOCK_BLOCKS = 130_000;
 
     struct PendingFingerprint {
         LoopV1Types.ExternalProtocolFingerprint fingerprint;
@@ -154,7 +154,7 @@ contract LoopFingerprintRegistry is ILoopV1Events {
         bytes32 sourceId = fingerprintSources[integrationId];
         if (sourceId == bytes32(0)) revert LoopV1Errors.FingerprintInvalid(6);
         FingerprintBaseline memory baseline = _validateQueuedFingerprint(core, market, sourceId, fingerprint);
-        uint256 effectiveBlock = block.number + REGISTRY_TIMELOCK_BLOCKS;
+        uint256 effectiveBlock = block.number + LoopV1Timelock.blocks();
         pendingFingerprints[integrationId] = PendingFingerprint(fingerprint, effectiveBlock, baseline);
         emit ExternalFingerprintUpdateQueued(integrationId, fingerprint.fingerprintHash, effectiveBlock);
     }

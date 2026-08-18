@@ -41,6 +41,7 @@
       "automationFeeCap": "25"
     },
     "bounds": {
+      "equityCollateral": "5000",
       "minWstDiemReceived": "1000",
       "minBorrowedDiem": "100",
       "maxBorrowedDiem": "10000",
@@ -60,5 +61,5 @@
       "evidenceBundleHash": "0x0505050505050505050505050505050505050505050505050505050505050505"
     }
   },
-  "expectedDigest": "0x84fafb0a0260c849a68cc2939a979a565058372e0994e48127e5b377574a2966"
+  "expectedDigest": "0x73e95a1a96d885c911492dffec86ee4c3495b018ff36c18da2856bbc99bf79ce"
 }

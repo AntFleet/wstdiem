@@ -124,7 +124,9 @@ interface ILoopRegistry {
     /// @notice One-way close of the bootstrap window. After this, batchUpdate queues under timelock.
     function closeBootstrap() external;
     function bootstrapClosed() external view returns (bool);
-    /// @notice Apply a previously queued batch after REGISTRY_TIMELOCK_BLOCKS; ops must match queue hash.
+    /// @notice Queue delay in blocks (130_000 on Base; 300 on Base Sepolia).
+    function registryTimelockBlocks() external view returns (uint256);
+    /// @notice Apply a previously queued batch after registryTimelockBlocks(); ops must match queue hash.
     function applyBatchUpdate(BatchOp[] calldata ops) external;
     function cancelPendingBatch() external;
     function pendingBatchUpdate()

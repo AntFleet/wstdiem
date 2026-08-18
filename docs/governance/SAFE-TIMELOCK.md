@@ -7,7 +7,7 @@
 | Control | Mechanism |
 |---------|-----------|
 | Ownership transfer | `Ownable2Step` (`transferOwnership` → `acceptOwnership`) |
-| Fingerprints | `queueExternalFingerprintUpdate` → `REGISTRY_TIMELOCK_BLOCKS` (130 000 ≈ 3d on Base) → apply via batch |
+| Fingerprints | `queueExternalFingerprintUpdate` → `registryTimelockBlocks()` (130 000 ≈ 3d on Base; 300 ≈ 10m on Base Sepolia) → apply via batch |
 | Critical roles | queue → apply after same delay (indexer, anchor, guardian, governance, harvest) |
 | Config batches | Immediate only while `bootstrapClosed == false`; after close, `batchUpdate` queues → `applyBatchUpdate` after delay |
 | Spend allowlist | Cannot disable after bootstrap (`spendAllowlistLocked`) |

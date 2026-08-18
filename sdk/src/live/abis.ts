@@ -290,6 +290,7 @@ const DIGEST_HASHES_ABI = {
 const OPEN_BOUNDS_ABI = {
   type: "tuple",
   components: [
+    { name: "equityCollateral", type: "uint256" },
     { name: "minWstDiemReceived", type: "uint256" },
     { name: "minBorrowedDiem", type: "uint256" },
     { name: "maxBorrowedDiem", type: "uint256" },
