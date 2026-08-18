@@ -9,6 +9,7 @@ export {
   useErc20Allowance,
   useErc20Balance,
   useApproveErc20,
+  useMintTestToken,
   formatTokenAmount,
 } from "./tokens.js";
 export {

@@ -13,6 +13,7 @@ import {
   useErc20Allowance,
   useErc20Balance,
   useApproveErc20,
+  useMintTestToken,
   formatTokenAmount,
   configuredChainLabel,
 } from "../wallet/index.js";
@@ -126,11 +127,18 @@ export function LoopBuilder(): JSX.Element {
     executor,
   );
   const approve = useApproveErc20();
+  const mintTest = useMintTestToken();
+  const TEST_MINT = 10n * 10n ** 18n;
   useEffect(() => {
     if (approve.isSuccess) {
       void allowanceQuery.refetch();
     }
   }, [approve.isSuccess, allowanceQuery]);
+  useEffect(() => {
+    if (mintTest.isSuccess) {
+      void balanceQuery.refetch();
+    }
+  }, [mintTest.isSuccess, balanceQuery]);
   const needsApprove =
     Boolean(account.isConnected && collateralAmount && executor) &&
     (allowanceQuery.data === undefined || allowanceQuery.data < collateralAmount!);
@@ -231,8 +239,19 @@ export function LoopBuilder(): JSX.Element {
             >
               Amount (wstDIEM)
             </label>
-            <span className="font-mono text-[11px] text-text-muted" data-testid="wst-balance">
+            <span className="flex items-center gap-2 font-mono text-[11px] text-text-muted" data-testid="wst-balance">
               Balance {formatTokenAmount(balanceQuery.data)}
+              {account.isConnected && collateralToken && account.address ? (
+                <button
+                  type="button"
+                  onClick={() => mintTest.mint(collateralToken, account.address!, TEST_MINT)}
+                  disabled={mintTest.isPending}
+                  className="text-accent underline hover:opacity-80 disabled:opacity-50"
+                  data-testid="mint-test-wst"
+                >
+                  {mintTest.isPending ? "Minting…" : "Get test wstDIEM"}
+                </button>
+              ) : null}
             </span>
           </div>
           <div className="flex gap-2">
