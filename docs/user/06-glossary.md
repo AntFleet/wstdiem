@@ -4,9 +4,21 @@ Definitions of terms you will encounter in the UI and documentation.
 
 ## Core concepts
 
-**wstDIEM** — A yield-bearing wrapper token. When you hold wstDIEM, your balance doesn't change, but the exchange rate with DIEM improves over time (you can redeem more DIEM per wstDIEM).
+**DIEM** — Raw Venice compute token on Base. When staked, it grants daily Venice API credit.
 
-**Loop / Looping** — Opening a leveraged position by borrowing DIEM against wstDIEM collateral, depositing the borrowed DIEM back into the vault to earn more wstDIEM, and repeating.
+**Venice credit** — Consumable API capacity from staked DIEM. Not token yield unless the credit is actually consumed, sold, routed, or otherwise monetized. Unused credit is `$0` token yield.
+
+**wstDIEM** — Rebase-free vault/share token over DIEM-backed assets. When you hold wstDIEM, your wallet balance does not automatically increase. Value changes through NAV / `convertToAssets` (you can redeem more DIEM per wstDIEM as the exchange rate rises).
+
+**NAV / exchange rate** — DIEM per wstDIEM via `convertToAssets`. This is how wstDIEM value accrues.
+
+**`DIEMCredited`** — Tier 1, chain-proven event: DIEM actually credited/staked into the vault, raising holder NAV.
+
+**`SettlementReceived` / `YieldRouted`** — Tier 2 context. On-chain-real amounts, but not proof that demand is external or organic.
+
+**Loop / Looping** — Opening a leveraged position by borrowing DIEM against wstDIEM collateral, depositing the borrowed DIEM back into the vault, and repeating. Amplifies NAV exposure and liquidation risk.
+
+**Loop position** — User-owned collateral/debt state with liquidation risk.
 
 **Leverage** — Your position size as a multiple of your input. 2x leverage means you own 2x the wstDIEM you supplied. 5x means 5x.
 
@@ -14,7 +26,7 @@ Definitions of terms you will encounter in the UI and documentation.
 
 **Debt** — The DIEM you borrowed from Morpho. You must repay this when you exit.
 
-**Spread / Loop Spread** — The annual difference between the wstDIEM vault yield and the DIEM borrowing rate. Your net profit (if positive) or loss (if negative).
+**Spread / Loop Spread** — Realized or modeled vault/NAV yield minus Morpho borrow cost and execution costs. Not guaranteed, not advice, and not a forward yield promise.
 
 ## Position tracking
 
@@ -28,7 +40,7 @@ Definitions of terms you will encounter in the UI and documentation.
 
 ## Markets and pricing
 
-**Exchange Rate** — The ratio of DIEM to wstDIEM. Increases as the wstDIEM vault earns rewards.
+**Exchange Rate** — The ratio of DIEM to wstDIEM (NAV). Increases when DIEM is credited into the vault; wallet balances do not rebase.
 
 **Morpho** — A lending protocol on Base that supplies the debt side of your position.
 
@@ -110,6 +122,14 @@ Definitions of terms you will encounter in the UI and documentation.
 
 **Evidence** — Screen showing historical events and protocol state (advanced).
 
+## Execution and decision-support
+
+**Keeper** — Operator that proposes or executes only within the user-signed envelope. Cannot change action type, widen bounds, bypass gates, or silently degrade MEV mode. Out-of-envelope live state fails closed.
+
+**Signed envelope / bounded execution** — The exact user-signed action type, amounts, and gates. Keepers only turn the crank inside it. No buybacks, burns, arena mechanics, or reflexive tokenomics.
+
+**Sizing candidate / capacity candidate** — Decision-support under model assumptions. Not permission to deploy, not automated protection, not investment advice.
+
 ## Abbreviations
 
 **HF** — Health Factor.
@@ -122,9 +142,7 @@ Definitions of terms you will encounter in the UI and documentation.
 
 **BPS / Basis Points** — 1/100th of a percent. 100 BPS = 1%.
 
-**DIEM** — The base asset. wstDIEM is a wrapper around it.
-
-**ETH / wstETH** — Ethereum and staked ETH (from Lido). The underlying assets for wstDIEM.
+**DIEM** — Venice compute token. See Core concepts.
 
 **EIP** — Ethereum Improvement Proposal. A standard for Ethereum protocols.
 
@@ -132,6 +150,7 @@ Definitions of terms you will encounter in the UI and documentation.
 
 ## See also
 
+- [Resource ladder](./00-resource-ladder.md) — canonical terms
 - [What is wstDIEM Loop?](./01-what-is-wstdiem-loop.md) — conceptual introduction
 - [Risk Disclosures](./03-risk-disclosures.md) — detailed explanation of each risk
 - [FAQ](./05-faq.md) — common questions and answers

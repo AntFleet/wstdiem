@@ -17,15 +17,19 @@ const policy = await sdk.createAutomationPolicy({
     threshold: 1300n, // 1.3
   },
   bounds: {
+    // Phase 1 createPolicy stores minRepay/maxCollateralSold/maxDebtIncrease as 0.
+    // The persisted envelope is policyHash; a positive sell requires a future
+    // policy-body ABI (audit-gate reclose).
     maxDebtIncrease: 0n,
-    maxCollateralSold: 50n * 10n ** 18n,
-    // ... other bounds ...
+    maxCollateralSold: 0n,
   },
   deadline: futureTimestamp,
 });
 ```
 
 Policy is stored on-chain in `LoopAuthorization.policies[policyId]`.
+
+Phase 1 `createPolicy` persists `policyHash`, class, execution kind, and expiry. Numeric execution bounds (`minRepay`, `maxCollateralSold`, `maxDebtIncrease`) are stored as zero. Permissionless AutomationExec may therefore only run `REPAY_ONLY` or `DELEVERAGE_ONLY` sequences, and any positive collateral withdraw reverts `CollateralSoldExceeded` until a future policy-body ABI (audit-gate reclose) fills those fields. Failed attempts increment the per-policy throttle and do not consume a nonce.
 
 **Indexer captures:** `PolicyCreated(policyId, owner, actionClass, bounds, ...)` event.
 
@@ -213,6 +217,8 @@ AutomationFailed(
 **Keeper responsibility:** Monitor events, log outcomes, alert on failures.
 
 ## Failure scenarios
+
+If live state is outside the signed envelope, do not execute. On-chain validation fails closed: the transaction reverts or emits `AutomationFailed` without consuming a nonce and without changing the position.
 
 ### Proposal rejection (before execution)
 

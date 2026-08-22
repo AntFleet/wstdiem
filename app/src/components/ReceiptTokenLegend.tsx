@@ -41,7 +41,7 @@ export function ReceiptTokenLegend(
           <td className="py-1 pr-3">
             {fallback(props.morphoCollateralWstDiem)}
             <span className="ml-2 text-[10px] text-text-muted">
-              (still accruing yield)
+              (NAV / exchange rate, not rebasing)
             </span>
           </td>
         </tr>

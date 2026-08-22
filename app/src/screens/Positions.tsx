@@ -421,13 +421,10 @@ export function Positions(): JSX.Element {
       >
         <div className="rounded-lg border border-border bg-surface px-4 py-3">
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-text">
-            Yield decomposition
+            Loop spread
           </h3>
           <YieldDecomposition />
-          <p className="mt-2 text-xs text-text-muted">
-            Per-component APRs land when the SDK exposes the fee-decomposition
-            surface (PR-16 follow-up).
-          </p>
+          <p className="mt-2 text-xs text-text-muted">Modeled split; not a yield promise. No split yet.</p>
         </div>
         <div className="rounded-lg border border-border bg-surface px-4 py-3">
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-text">

@@ -28,7 +28,7 @@ export const INTENTS: readonly IntentMeta[] = [
     id: "earn-spread",
     label: "Earn spread",
     description:
-      "Open a loop to earn the net DIEM/wstDIEM spread. You supply wstDIEM, the executor borrows DIEM and redeposits.",
+      "Open a loop for modeled loop spread (NAV minus Morpho borrow and execution costs). Not a yield promise. You supply wstDIEM; the executor borrows DIEM and redeposits.",
     primaryType: "Open",
     mechanism: "Open",
   },

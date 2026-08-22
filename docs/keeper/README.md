@@ -16,6 +16,7 @@ Runbook for operators running keeper automation, executing proposals, and monito
 ## Before you read
 
 - **You are an operator with infrastructure expertise.** This guide assumes familiarity with RPC endpoints, env configuration, and transaction broadcasting.
+- **Bounded execution.** Keepers only turn the crank inside the user-signed envelope. Out-of-envelope live state fails closed; the position is unchanged. No buybacks, burns, arena mechanics, or reflexive tokenomics. Terms: [resource ladder](../user/00-resource-ladder.md). Known residuals: Phase 1 AutomationExec numeric bounds are stored as zero (no collateral sell until a future policy-body ABI); `PRIVATE_BUILDER` must not silently degrade onto sequencer-direct.
 - **Phase 1 gates permissionless execution.** Only whitelisted callers can execute automation in Phase 1 per AC-17. This is a temporary Phase 1 restriction.
 - **Incident state is authoritative.** The on-chain `EmergencyGuardian` state machine controls what's allowed. Always check it before execution.
 

@@ -8,6 +8,7 @@ User-facing, integrator, and keeper documentation for the wstDIEM Protocol v6. T
 
 Plain-language walkthrough for wstDIEM holders who want to open, monitor, rebalance, and exit loop positions via the web app.
 
+- [Resource ladder](./user/00-resource-ladder.md) — DIEM, Venice credit, wstDIEM NAV, trust tiers, loop spread, keeper bounds
 - [What is wstDIEM Loop?](./user/01-what-is-wstdiem-loop.md) — intro + what you get + what risks you carry
 - [Quickstart](./user/02-quickstart.md) — step-by-step through the UI
 - [Risk Disclosures](./user/03-risk-disclosures.md) — liquidation, oracle, MEV, audit gate

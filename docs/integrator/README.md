@@ -6,7 +6,7 @@ Complete API reference and integration guide for developers building on the Type
 
 - **Install and quickstart** — get the SDK running in 5 minutes
 - **API reference** — every method on `WstdiemSdk` with examples
-- **Action types** — Open/Rebalance/Exit/ForceExit/AutomationExec envelopes
+- **Action types** — Open/Rebalance/Exit/ForceExit/AutomationExec envelopes (keepers execute only inside the signed envelope; see [resource ladder](../user/00-resource-ladder.md))
 - **Evidence model** — ActionEvidence canonical-set encoding per §5.5
 - **Gate evaluation** — G-PM-1..6 fail-closed gates explained
 - **Canonical errors** — full error registry + handling patterns

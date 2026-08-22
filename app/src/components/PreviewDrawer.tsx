@@ -394,8 +394,8 @@ export function PreviewDrawer(props: PreviewDrawerProps): JSX.Element | null {
               </p>
             </Section>
 
-            {/* Fees and yield */}
-            <Section testId="preview-fees-yield" title="Fees and yield">
+            {/* Fees and loop spread */}
+            <Section testId="preview-fees-yield" title="Fees and loop spread">
               <p className="text-xs text-text-muted">
                 Protocol fee, automation fee, third-party route fees,
                 flash-loan fee, borrow APY, vault APY, net APY spread,

@@ -37,7 +37,7 @@ export function YieldDecomposition(
       <tbody className="font-mono text-text">
         <tr className="border-t border-border/60">
           <td className="py-1 pr-3 text-text-muted">
-            wstDIEM yield (accrues even while pledged)
+            wstDIEM NAV / exchange rate (pledged shares; not rebasing)
           </td>
           <td className="py-1 pr-3 text-right text-risk-green">
             {fmtApr(props.walletWstDiemApr)}
