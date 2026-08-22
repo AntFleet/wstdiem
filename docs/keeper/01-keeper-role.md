@@ -17,21 +17,30 @@ A keeper is an operator who watches for automation policy conditions and propose
 
 ## What a keeper CANNOT do
 
-The on-chain executor enforces strict bounds on keeper actions:
+The on-chain executor enforces strict bounds on keeper actions. The keeper only turns the crank inside the exact signed envelope; if live state is outside that envelope, execution fails closed and the position is unchanged.
+
+Keepers are not a tokenomics engine. There are no burns, buybacks, arena mechanics, or reflexive token loops. A keeper cannot manufacture demand or recycle proceeds into token reflexivity.
 
 1. **Cannot exceed signed bounds** — The keeper must execute within the exact parameters the user signed (§6.4 bound-parity)
-   - If user signed "borrow up to 50 DIEM", keeper cannot borrow 51 DIEM
-   - If user signed "repay at least 40 DIEM", keeper cannot repay 39 DIEM
+   - If user signed "borrow up to 50 DIEM", keeper cannot borrow 51 DIEM (`BorrowedDiemOutOfBand`)
+   - If user signed "repay at least 40 DIEM", keeper cannot repay 39 DIEM (`MinimumRepayShort`)
+   - If user signed "sell at most 10 wstDIEM", keeper cannot withdraw 11 (`CollateralSoldExceeded`)
 
-2. **Cannot change action type** — If policy is for Rebalance, keeper must execute Rebalance, not Exit
+2. **Cannot change action type** — A Rebalance signature cannot execute Exit. ForceExit is a distinct EIP-712 domain (`WSTDIEM ForceExit`) and verifying contract.
 
-3. **Cannot overwrite nonce** — Each action consumes a nonce. Keeper cannot replay or re-execute the same nonce
+3. **Cannot mix Rebalance modes** — Signing both `maxDebtIncrease > 0` and `maxCollateralSold > 0` reverts `RebalanceModeAmbiguous`. Repay-only Rebalance (`(0, 0)`) and Exit `repayOnly` cannot become Curve-selling paths.
 
-4. **Cannot sign for users** — Keeper submits user-signed transactions. Keeper does not create new signatures
+4. **Cannot overwrite nonce** — Each action consumes a nonce. Keeper cannot replay or re-execute the same nonce. Failed automation / keeper ForceExit attempts do **not** consume a nonce; they increment the per-policy failed-attempt throttle instead.
 
-5. **Cannot bypass gates** — All G-PM-1..6 gates still apply. Keeper cannot skip them
+5. **Cannot sign for users** — Keeper submits user-signed transactions. Keeper does not create new signatures
 
-6. **Cannot transfer collateral or debt** — Keeper manipulates user position, not balances
+6. **Cannot bypass gates** — All G-PM-1..6 gates still apply. Keeper cannot skip them. G-PM-5 must not silently degrade `PRIVATE_BUILDER` onto sequencer-direct.
+
+7. **Cannot transfer collateral or debt** — Keeper manipulates user position, not balances
+
+8. **Cannot widen a ForceExit waiver** — At most one critical `acknowledgedRisks` bit per digest. `PUBLIC` is disallowed for permissionless ForceExit. Deadline is capped at 24h. Quote age is enforced.
+
+Phase 1 stored automation policies persist `policyHash` but **not** numeric `minRepay` / `maxCollateralSold` / `maxDebtIncrease` (those fields are zero). Deleverage-class AutomationExec therefore cannot sell collateral until a future policy-body ABI (audit-gate reclose). That is fail-closed, not a keeper discretion.
 
 ## Why permissionless fallback exists
 
@@ -86,6 +95,7 @@ Phase 1 has no bonding or reputation, but best practices now build foundation fo
 
 ## See also
 
+- [Resource ladder](../user/00-resource-ladder.md) — canonical terms (DIEM, Venice credit, signed envelope)
 - [Automation Lifecycle](./03-automation-lifecycle.md) — step-by-step execution flow
 - [Permissionless Fallback](./05-permissionless-fallback.md) — when/how users can self-execute
 - [§8](../../PROTOCOL.md) — keeper requirements in protocol spec

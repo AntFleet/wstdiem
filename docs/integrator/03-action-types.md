@@ -84,6 +84,8 @@ interface RebalanceBounds {
 
 Combining both (debt increase + collateral sale) reverts `RebalanceModeAmbiguous`.
 
+Bounded execution: the keeper/executor cannot change mode after signing. Leverage-increase cannot run `withdrawCollateral`; partial deleverage cannot `borrow`; health-factor recovery is repay-only. Amounts above `maxDebtIncrease` / `maxCollateralSold` revert `BorrowedDiemOutOfBand` / `CollateralSoldExceeded`.
+
 **When to use:** 
 - LEVERAGE_INCREASE: User wants more exposure to wstDIEM
 - PARTIAL_DELEVERAGE: User wants to reduce risk, withdraw collateral
@@ -115,7 +117,9 @@ interface ExitBounds {
 
 **When to use:** User wants to close their position and get back DIEM.
 
-**Gates:** None (risk-reducing, always allowed if readiness permits).
+**Bounded execution:** `repayOnly: true` arms Morpho `repay` only (`maxCollateral = 0`, no Curve). A keeper cannot convert that signature into a collateral sale. `minRepayment` and `maxCollateralSold` are enforced at `executeMorpho`. Third-party repay is rejected in Phase 1 (`ThirdPartyRepayNotAccepted`).
+
+**Gates:** G-PM-5 (MEV waiver) and G-PM-6 (when permissionless). Exit is not high-risk for I-66.
 
 **Exit route:** Currently only "CURVE" is supported in Phase 1. The routeKind is pinned in registry per market.
 
@@ -138,11 +142,13 @@ interface ForceExitBounds {
 
 **When to use:** Position is at risk of liquidation and user must exit immediately, overriding normal safety checks.
 
+ForceExit is a distinct EIP-712 domain (`WSTDIEM ForceExit`) and verifying contract. A normal Exit signature cannot be replayed into `executeForceExit`. `minRepayment` and `maxCollateralSold` still bind Morpho amounts; waivers loosen checks, they do not skip them.
+
 **Acknowledgment bits:**
-- Must acknowledge liquidation risk
-- Must acknowledge oracle risk
-- Must acknowledge irreversible loss possible
-- Maximum 24h deadline per audit gate (I-67)
+- At most one critical override (`STALE_ORACLE` / `CURVE_DEPTH` / `SEQUENCER_DOWN` / `VAULT_EVIDENCE`). `LOOSE_SLIPPAGE` may combine with one critical bit. Two critical bits revert `ForceExitWaiverOverbroad`.
+- `PUBLIC` is disallowed for permissionless ForceExit (`MevModeMismatch`).
+- Maximum 24h deadline (`ForceExitDeadlineExceedsBound`). Quote age is enforced (`QuoteStale`).
+- No stored ForceExit policies in Phase 1 (`policyId` must be 0).
 
 **Gates:** 
 - G-PM-1/4 bypass (force exit can happen in emergency)
@@ -180,6 +186,8 @@ interface AutomationExecAction extends CommonActionEnvelope {
 
 **Phase 1 Status:** Restricted per AC-17. Permissionless execution returns degraded results.
 
+**Bounded execution:** the keeper may only execute the signed policy envelope. If live state is outside those bounds, execution fails closed (`AutomationFailed`, no nonce consume, position unchanged). Phase 1 stored numeric bounds are zero, so deleverage cannot sell collateral until a future policy-body ABI (audit-gate reclose). Keepers cannot change action type, widen bounds, bypass gates, or silently degrade MEV mode.
+
 ## Using the Action union
 
 ```ts
@@ -197,6 +205,7 @@ console.log(`Deadline: ${example.deadline}`);
 
 ## See also
 
+- [Resource ladder](../user/00-resource-ladder.md) — DIEM / Venice credit / signed envelope terms
 - [Getting Started](./01-getting-started.md) — examples of building actions
 - [Evidence Model](./04-evidence-model.md) — what evidence each action requires
 - [Gate Evaluation](./05-gate-evaluation.md) — how gates interpret bounds

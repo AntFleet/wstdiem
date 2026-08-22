@@ -6,6 +6,7 @@ Welcome to wstDIEM Looping. This guide is for retail users who hold wstDIEM and 
 
 ## What this covers
 
+- **Resource ladder** — canonical terms: DIEM, Venice credit, wstDIEM NAV, trust tiers, loop spread, keeper bounds
 - **What is wstDIEM Loop?** — the basics: what it is, what you earn, what can go wrong
 - **Quickstart** — from wallet connection to your first open position
 - **Risk Disclosures** — detailed explanations of liquidation, oracle risk, MEV, and when the protocol pauses
@@ -15,13 +16,14 @@ Welcome to wstDIEM Looping. This guide is for retail users who hold wstDIEM and 
 
 ## Before you start
 
-- **You need wstDIEM.** This is a specialized tool for people who already hold wstDIEM. If you don't have it yet, deposit DIEM into the wstDIEM vault first.
+- **You need wstDIEM.** This is a specialized tool for people who already hold wstDIEM. If you don't have it yet, deposit DIEM into the wstDIEM vault first. wstDIEM is rebase-free: value accrues through NAV / the exchange rate, not a growing wallet balance. See the [resource ladder](./00-resource-ladder.md).
 - **This is not trading.** You are not buying or selling. You are borrowing DIEM against your wstDIEM to increase your exposure to the DIEM/wstDIEM exchange rate.
 - **Risk is real.** Your position can be liquidated if the exchange rate moves against you. Read the [Risk Disclosures](./03-risk-disclosures.md) before opening.
 - **The audit gate gates production.** Until the protocol passes external audit, you are using an early release. Understand the [Risk Disclosures](./03-risk-disclosures.md) fully.
 
 ## Table of contents
 
+0. [Resource ladder](./00-resource-ladder.md)
 1. [What is wstDIEM Loop?](./01-what-is-wstdiem-loop.md)
 2. [Quickstart](./02-quickstart.md)
 3. [Risk Disclosures](./03-risk-disclosures.md)

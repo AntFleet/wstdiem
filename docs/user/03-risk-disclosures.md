@@ -139,25 +139,26 @@ In extreme circumstances, the protocol may be forced to exit your position autom
 
 ## Vault risk
 
-wstDIEM is a rebase-free wrapper around the Lido wstETH vault. The vault itself carries risks:
+wstDIEM is a rebase-free share token over the InferenceVault (DIEM-backed). Value accrues when NAV / `convertToAssets` increases, not when your wallet balance rebases. The vault itself carries risks:
 
-1. **Lido validator risk:** If Lido validators fail or go offline, you may lose ETH
-2. **Vault contract risk:** The vault contract could have a bug
-3. **Lido governance risk:** Lido may change the vault in ways that affect your returns
+1. **DIEM / Venice credit risk:** Staked DIEM grants Venice API credit. That credit is `$0` token yield if unused. Vault NAV only rises when DIEM is actually credited (Tier 1 `DIEMCredited`).
+2. **Vault contract risk:** The vault contract could have a bug.
+3. **Routing / keeper cadence:** Credits are lumpy. A quiet window is not proof of zero demand, and settled USDC (Tier 2 `SettlementReceived` / `YieldRouted`) is not proof of external demand.
 
-These are risks you take on by holding wstDIEM at all. **Looping amplifies them.**
+These are risks you take on by holding wstDIEM at all. **Looping amplifies them.** See the [resource ladder](./00-resource-ladder.md).
 
 ## Summary: Risk spectrum
 
 From lowest to highest risk:
 
-1. **Holding wstDIEM:** You earn yield, vault and Lido risk only
+1. **Holding wstDIEM:** You are exposed to vault NAV and Venice-credit utilization risk only
 2. **Opening a small loop (2x leverage):** You amplify yield, but liquidation risk is real
 3. **Opening a large loop (5x+ leverage):** Liquidation is likely if the rate falls even moderately
 4. **Looping in a downtrend:** You are making a leveraged bet against an unfavorable trend — maximum risk
 
 ## See also
 
+- [Resource ladder](./00-resource-ladder.md) — canonical terms
 - [What is wstDIEM Loop?](./01-what-is-wstdiem-loop.md) — background concepts
 - [Quickstart](./02-quickstart.md) — step-by-step through the UI
 - [Glossary](./06-glossary.md) — definitions of terms

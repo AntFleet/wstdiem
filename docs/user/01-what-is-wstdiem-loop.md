@@ -4,26 +4,28 @@ This explains what wstDIEM Looping is, what you earn, and what risks you take on
 
 ## The basic idea
 
-wstDIEM is a yield-bearing token. When you hold wstDIEM, your balance automatically increases as the Lido wstETH vault earns staking rewards. **Looping lets you amplify this yield.**
+wstDIEM is a rebase-free vault/share token over DIEM-backed assets. Your wallet balance does not automatically increase. When vault NAV / the DIEM-per-wstDIEM exchange rate rises, each wstDIEM is redeemable for more DIEM. **Looping lets you amplify that NAV exposure — and the liquidation risk that comes with it.**
+
+Start with the [resource ladder](./00-resource-ladder.md) if the terms DIEM, Venice credit, NAV, or loop spread are new.
 
 Here's how it works:
 
 1. **You transfer wstDIEM to the protocol.** Let's say you send 100 wstDIEM.
 2. **The protocol borrows DIEM on your behalf.** Using your 100 wstDIEM as collateral, it borrows DIEM from Morpho.
 3. **The protocol deposits the borrowed DIEM back into the vault.** The vault turns it into more wstDIEM.
-4. **You now hold more wstDIEM and owe more DIEM.** Your position is "leveraged" — you have bigger exposure to wstDIEM yield, but you also have debt.
+4. **You now hold more wstDIEM and owe more DIEM.** Your position is "leveraged" — you have bigger NAV exposure, and bigger liquidation risk.
 
-The difference between the yield your wstDIEM earns and the interest you pay on the borrowed DIEM is your net profit. **This is your loop spread.**
+The difference between vault/NAV yield and Morpho borrow cost (plus execution costs) is your **loop spread**. It is realized or modeled under assumptions — not guaranteed, not advice, and not a forward yield promise.
 
 ## What you earn
 
-Loop spreads come from a simple arbitrage:
+Loop spread is a cost comparison, not a coupon:
 
-- **You earn:** The wstDIEM vault's staking yield (from Lido)
-- **You pay:** The borrowing cost on Morpho
-- **Your spread = earning − borrowing cost**
+- **You earn:** Any increase in wstDIEM NAV. NAV rises when DIEM is actually credited into the vault (Tier 1 `DIEMCredited`). That credit comes from monetized Venice API capacity. Unused Venice credit is `$0` token yield.
+- **You pay:** The borrowing cost on Morpho, plus execution costs
+- **Your loop spread = vault/NAV yield − Morpho borrow cost − execution costs**
 
-When the spread is positive, every day your position sits, you earn. When the spread turns negative, every day costs you money.
+When the realized spread is positive, NAV can outrun borrow cost. When it is negative, the position can lose value. Past spread is not a forward yield promise. Tier 2 `SettlementReceived` / `YieldRouted` amounts are on-chain-real context, not proof that demand is external.
 
 ## What can go wrong
 
@@ -70,7 +72,7 @@ The protocol will remain paused until it passes external security audit. Do not 
 
 ## The exchange rate matters
 
-wstDIEM is rebase-free, so your balance in the vault doesn't automatically tick up. Instead, the exchange rate between DIEM and wstDIEM increases. 1 DIEM buys less wstDIEM over time because the vault earns rewards.
+wstDIEM is rebase-free, so your wallet balance does not automatically tick up. Value accrues when NAV / `convertToAssets` increases: each wstDIEM becomes redeemable for more DIEM.
 
 This means:
 
@@ -86,6 +88,7 @@ Before opening, read [Risk Disclosures](./03-risk-disclosures.md) to understand 
 
 ## See also
 
+- [Resource ladder](./00-resource-ladder.md) — canonical terms
 - [Quickstart](./02-quickstart.md) — step-by-step through the UI
 - [Risk Disclosures](./03-risk-disclosures.md) — detailed explanations of each risk
 - [Glossary](./06-glossary.md) — definitions of terms used throughout

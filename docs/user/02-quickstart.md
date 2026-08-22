@@ -4,7 +4,7 @@ This is a step-by-step walkthrough of opening, monitoring, and exiting a wstDIEM
 
 ## Before you start
 
-- Have wstDIEM in your wallet (MetaMask, Safe, or Coinbase Smart Wallet)
+- Have wstDIEM in your wallet (MetaMask, Safe, or Coinbase Smart Wallet). wstDIEM is rebase-free — value is NAV / the exchange rate, not a growing wallet balance. See the [resource ladder](./00-resource-ladder.md).
 - Have Base network added to your wallet
 - Connect to https://app.wstdiem.example (deployed URL varies by testnet/mainnet)
 
@@ -23,7 +23,7 @@ Stuck? Read [Wallets](./04-wallets.md) for wallet-specific instructions.
 2. You will see one or more market cards (e.g., "DIEM/wstDIEM")
 3. Each card shows:
    - Current wstDIEM/DIEM exchange rate
-   - Estimated annual yield spread
+   - Estimated loop spread (NAV minus borrow and execution costs; not a yield promise)
    - Whether the protocol is paused or open
    - A blue **Open Loop** button
 

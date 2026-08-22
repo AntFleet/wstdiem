@@ -74,7 +74,7 @@ export function MarketCard(props: MarketCardProps): JSX.Element {
           className="text-xs text-text-muted"
           data-testid="market-card-earn"
         >
-          <div className="uppercase tracking-wide text-[10px]">Earn</div>
+          <div className="uppercase tracking-wide text-[10px]">Loop spread</div>
           <div
             className={`text-sm font-semibold ${
               props.netSpreadBps !== undefined

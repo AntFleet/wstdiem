@@ -68,7 +68,7 @@ When the protocol pauses (due to a vulnerability or emergency):
 
 The paused state is shown as a red banner on the app. Pauses are temporary while a fix is deployed and audited.
 
-## Fees and yield
+## Fees and loop spread
 
 ### What fees do I pay?
 
@@ -79,18 +79,26 @@ Two fees:
 
 There is no exit fee or rebalance fee.
 
-### How is my yield calculated?
+### How is loop spread calculated?
 
-Your yield comes from the difference between:
+Loop spread is vault/NAV yield minus Morpho borrow cost and execution costs. It is not guaranteed and not a forward yield promise:
 
-- **What you earn:** The wstDIEM vault's annual yield (from Lido staking rewards)
-- **What you pay:** The annual borrowing rate on Morpho
+- **What you earn:** Any increase in wstDIEM NAV (the DIEM-per-wstDIEM exchange rate via `convertToAssets`). NAV rises when DIEM is credited into the vault (Tier 1 `DIEMCredited`). Unused Venice credit is `$0` token yield.
+- **What you pay:** The annual borrowing rate on Morpho, plus execution costs
 
-The app shows the estimated spread in the Markets screen.
+The app shows an estimated spread in the Markets screen. That estimate is decision-support, not a coupon. See the [resource ladder](./00-resource-ladder.md).
 
 ### Can the spread turn negative?
 
-Yes. If borrowing rates rise higher than the vault yield, the spread becomes negative and you lose money every day. **Monitor the spread and exit if it turns negative.**
+Yes. If borrowing rates rise higher than vault/NAV yield, the realized spread becomes negative and the position can lose value. **Monitor the spread and exit if it turns negative.** Past spread is not a forward yield promise.
+
+### Does my wstDIEM wallet balance go up by itself?
+
+No. wstDIEM is rebase-free. Value accrues through NAV / the DIEM-per-wstDIEM exchange rate (`convertToAssets`), not through a growing wallet balance.
+
+### Can a keeper change my position however they want?
+
+No. A keeper only turns the crank inside the signed envelope you authorized. If live state is outside those bounds, execution fails closed and your position is unchanged. Keepers cannot change action type, widen bounds, bypass gates, or silently degrade MEV mode. There are no buybacks, burns, arena mechanics, or reflexive tokenomics.
 
 ## Signing and security
 
@@ -168,6 +176,7 @@ Check the error message in the app. If it says "AuditGateClosed", the protocol i
 
 ## See also
 
+- [Resource ladder](./00-resource-ladder.md) — canonical terms
 - [Quickstart](./02-quickstart.md) — step-by-step through the UI
 - [Risk Disclosures](./03-risk-disclosures.md) — detailed risk explanations
 - [Wallets](./04-wallets.md) — wallet setup and troubleshooting

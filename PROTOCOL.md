@@ -409,6 +409,19 @@ Bound-parity invariant:
 
 Every bound the executor checks at runtime appears in either the action digest's structured fields (one-shot direct actions) or the stored policy envelope (automation), and never neither. The the SDK type definitions MUST publish a bound-parity matrix mapping each per-action bound from §6.1/§6.2/§6.3 to its digest/policy field. Adding a runtime check without a corresponding signed bound is a Protocol Audit Gate v2 reclose condition.
 
+Bounded execution invariant (permissionless callers):
+
+A non-owner caller (keeper, permissionless fallback, automation executor) may only "turn the crank" inside the exact user-signed envelope. If live state has moved outside that envelope, execution fails closed: the transaction reverts or, for AutomationExec / keeper ForceExit, emits `AutomationFailed` without consuming a nonce and without changing the user position. Concretely:
+
+- Action type is the EIP-712 `primaryType`. A Rebalance signature cannot authorize Exit or ForceExit; ForceExit uses a distinct domain (`WSTDIEM ForceExit`) and verifying contract.
+- Rebalance mode is derived only from `(maxDebtIncrease, maxCollateralSold)`. Both positive reverts `RebalanceModeAmbiguous`. `(>0, 0)` may borrow up to the signed cap; `(0, >0)` may sell up to the signed cap; `(0, 0)` is repay-only and cannot withdraw collateral.
+- Exit `repayOnly` arms terminal Morpho `repay` with `maxCollateral = 0` and a Curve-free executor path. A keeper cannot convert repay-only into a Curve sell.
+- Borrow, collateral-sold, and min-repay amounts are enforced in `LoopV1MorphoValidation` against the armed context. Selling more than signed reverts `CollateralSoldExceeded`; borrowing more than signed reverts `BorrowedDiemOutOfBand`; repaying less than signed reverts `MinimumRepayShort`.
+- Identity fields (`owner`, `market`, `executor`, `registryVersion`, `registryMerkleRoot`, `deadline`, nonce) are hashed into the digest and re-checked at validate-time. Morpho `onBehalf` must be the signed owner; `receiver` must be the signed executor.
+- `mevProtectionMode` `SEALED_AUCTION` (Phase G) and unknown modes revert `MevModeMismatch`. `PUBLIC` and `SEQUENCER_DIRECT_FAILOPEN` require the matching signed waiver bit. Permissionless ForceExit may not sign `PUBLIC`. SDK G-PM-5 must not silently degrade a `PRIVATE_BUILDER` digest onto sequencer-direct; that is `MevModeMismatch` / `KeeperBuilderOutage`, not a waiver-bit shortcut.
+- Phase 1 `createPolicy` stores `minRepay = maxCollateralSold = maxDebtIncrease = 0`. AutomationExec deleverage therefore cannot sell collateral (`CollateralSoldExceeded` on any positive withdraw) until a future policy-body ABI (audit-gate reclose) persists those bounds. Failed automation attempts are throttled per policy and do not consume a nonce.
+- Phase 1 `executeOpen` / `executeRebalance` / `executeExit` see `LoopExecutorV2` as `msg.sender` inside `validateExecutionKind`. The live keeper allow-list for those entrypoints is therefore the executor address (deploy scripts allow-list it). `executeAutomationExec` and keeper ForceExit check the outer caller before the failed-attempt throttle.
+
 Nonce model:
 
 Nonces are owned by `LoopAuthorization`. The Permit2-style 256-bit bitmap per `(owner, policyId, actionType)` supports up to 256 parallel and out-of-order actions per slot. The nonce bit is set atomically with the final state-changing external call (the wrapping `executeMorpho` call frame). On revert the entire transaction reverts and the bit remains unset — failed automation does not consume a nonce. `LoopAuthorization.revoke(policyId)` sets `revocationBlock`; for `revocationGracePeriod = 5 blocks`, all automation execution against that policy reverts `PolicyRevoking` even with a valid digest. Direct one-shot signatures use `policyId = 0`; their nonce slots are namespaced separately from any policy.
@@ -917,4 +930,5 @@ Lybra-derived guardrail:
 - Arbitrary user-selected routes or unsupported external spenders.
 - Pendle, restaking, points-farming, or generalized yield-strategy aggregation.
 - Automation policies that can execute outside user-scoped caps, expiry, market, action, spender, or health-factor constraints.
+- Burns, buybacks, arena mechanics, or reflexive tokenomics. Keepers and permissionless callers execute only inside the user-signed envelope; they do not manufacture demand or recycle proceeds into token reflexivity.
 - Unbounded governance control over oracles, executors, fees, routes, or user exits.
